@@ -5,6 +5,7 @@ Backend service untuk WhatsApp Business dengan dukungan multi-device menggunakan
 ## 📋 Daftar Isi
 
 - [Overview](#overview)
+- [Update Terbaru](#-update-terbaru)
 - [Arsitektur Sistem](#arsitektur-sistem)
 - [Flow Diagram](#flow-diagram)
 - [Fitur](#fitur)
@@ -18,13 +19,74 @@ Backend service untuk WhatsApp Business dengan dukungan multi-device menggunakan
 - [Menjalankan Server](#menjalankan-server)
 - [API Documentation](#api-documentation)
 - [Role-Based Access Control](#role-based-access-control)
+  - [Role & Permission Matrix](#role--permission-matrix)
+  - [User Flow Based on Role](#user-flow-based-on-role)
+  - [Feature Access by Role](#feature-access-by-role)
+  - [Authentication & Authorization Flow](#authentication--authorization-flow)
 - [Development](#development)
 - [Deployment](#deployment)
 - [Dokumentasi Tambahan](#dokumentasi-tambahan)
 
 ---
 
-## 🎯 Overview
+## � Update Terbaru
+
+### Versi 1.1.0 (Januari 2026)
+
+#### Fitur Baru & Improvement
+
+1. **Enhanced Role-Based Access Control**
+
+   - Improved permission management dengan granular control
+   - Ownership validation di semua endpoint yang relevan
+   - Admin bypass untuk special operations
+
+2. **Multi-Device Support Maturity**
+
+   - Stable multi-device architecture
+   - Auto-restore sessions dengan reliability tinggi
+   - Device lifecycle management yang komprehensif
+
+3. **Job Queue Improvements**
+
+   - Better error handling dalam bulk messaging
+   - Job cancellation dengan graceful shutdown
+   - Real-time progress tracking via SSE
+
+4. **Statistics & Analytics Enhancement**
+
+   - Daily activity tracking per device
+   - Response rate calculation
+   - Message statistics (incoming/outgoing)
+
+5. **Admin Dashboard Features**
+
+   - Global statistics view
+   - User management (CRUD)
+   - Device monitoring across all users
+   - Message management & filtering
+   - Job monitoring & control
+
+6. **User Dashboard Features**
+   - Personal device management
+   - Device-specific operations
+   - Contact & chat history access
+   - Job status monitoring (owned devices)
+
+#### Bug Fixes & Optimizations
+
+- Improved session persistence mechanism
+- Better error logging untuk debugging
+- Performance optimization untuk large datasets
+- Security improvements dalam token handling
+
+#### Breaking Changes
+
+- None (full backward compatibility maintained)
+
+---
+
+## �🎯 Overview
 
 WhatsApp Service adalah backend API untuk mengelola koneksi WhatsApp dengan dukungan multi-device. Setiap user dapat memiliki multiple devices/akun WhatsApp yang terhubung secara bersamaan. Sistem ini menggunakan arsitektur RESTful API dengan real-time updates melalui Server-Sent Events (SSE).
 
@@ -1184,99 +1246,777 @@ Endpoint lama tetap berfungsi di `/api/whatsapp/*` untuk backward compatibility:
 
 ## 🔐 Role-Based Access Control
 
-### Role Hierarchy
+Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fitur dan resource berdasarkan peran user. Terdapat 2 role utama dalam sistem ini:
 
-Sistem memiliki 2 role utama:
+### Role Definitions
 
-1. **Admin** - Full access ke semua fitur
-2. **User** - Limited access, hanya bisa akses resource miliknya sendiri
+1. **Admin** - Full access ke semua fitur dan resource
+2. **User** - Limited access, hanya untuk resource milik user sendiri
 
-### Permission Matrix
+### Role & Permission Matrix
 
-| Feature                  | Admin | User | Notes                                  |
-| ------------------------ | ----- | ---- | -------------------------------------- |
-| Create Device            | ✅    | ❌   | Hanya admin yang bisa create device    |
-| Connect Device           | ✅    | ✅   | User hanya untuk device miliknya       |
-| Disconnect Device        | ✅    | ✅   | User hanya untuk device miliknya       |
-| Delete Device            | ✅    | ❌   | Hanya admin yang bisa delete           |
-| View QR Code             | ✅    | ✅   | User hanya untuk device miliknya       |
-| List Devices             | ✅    | ✅   | User hanya lihat device miliknya       |
-| Send Message             | ✅    | ✅   | Ownership validation                   |
-| Schedule Message         | ✅    | ✅   | Ownership validation                   |
-| Bulk Messaging           | ✅    | ❌   | Hanya admin yang bisa bulk messaging   |
-| Group Management         | ✅    | ❌   | Hanya admin yang bisa manage groups    |
-| Chat History             | ✅    | ✅   | Ownership validation                   |
-| Statistics               | ✅    | ❌   | Hanya admin yang bisa lihat statistics |
-| User Management          | ✅    | ❌   | Hanya admin                            |
-| Device Management (All)  | ✅    | ❌   | Hanya admin                            |
-| Message Management (All) | ✅    | ❌   | Hanya admin                            |
+| Feature                    | Admin | User | Notes                               |
+| -------------------------- | ----- | ---- | ----------------------------------- |
+| **Authentication**         |       |      |                                     |
+| Register                   | ✅    | ✅   | Semua user bisa register            |
+| Login                      | ✅    | ✅   | Semua user bisa login               |
+| Profile View               | ✅    | ✅   | User lihat profil sendiri           |
+| Profile Update             | ✅    | ✅   | User update profil sendiri          |
+| **Device Management**      |       |      |                                     |
+| Create Device              | ✅    | ❌   | Hanya admin                         |
+| List Devices               | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Get Device Details         | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Get Device Status          | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Connect Device             | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Disconnect Device          | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Delete Device              | ✅    | ❌   | Hanya admin                         |
+| Cancel & Wipe Device       | ✅    | ❌   | Hanya admin                         |
+| **QR Code & Pairing**      |       |      |                                     |
+| View QR Code               | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Get QR Image               | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Generate Pairing Code      | ✅    | ❌   | Hanya admin                         |
+| **Messaging**              |       |      |                                     |
+| Send Text Message          | ✅    | ✅   | Ownership validation required       |
+| Send Media Message         | ✅    | ✅   | Ownership validation required       |
+| Schedule Message           | ✅    | ✅   | Ownership validation required       |
+| View Message History       | ✅    | ✅   | Ownership validation required       |
+| Send Group Message         | ✅    | ❌   | Hanya admin                         |
+| **Bulk Messaging & Jobs**  |       |      |                                     |
+| Create Bulk Text Job       | ✅    | ❌   | Hanya admin                         |
+| Create Bulk Media Job      | ✅    | ❌   | Hanya admin                         |
+| Create Group Media Job     | ✅    | ❌   | Hanya admin                         |
+| View Job Status            | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Cancel Job                 | ✅    | ✅   | Admin: semua, User: device miliknya |
+| **Group Management**       |       |      |                                     |
+| List Groups                | ✅    | ❌   | Hanya admin                         |
+| Create Group               | ✅    | ❌   | Hanya admin                         |
+| Get Group Info             | ✅    | ❌   | Hanya admin                         |
+| Manage Group Participants  | ✅    | ❌   | Hanya admin (invite/kick)           |
+| Manage Group Admins        | ✅    | ❌   | Hanya admin (promote/demote)        |
+| **Chat History**           |       |      |                                     |
+| View Contact Chat History  | ✅    | ✅   | Ownership validation required       |
+| View Group Chat History    | ✅    | ❌   | Hanya admin                         |
+| View Daily Chat List       | ✅    | ✅   | Ownership validation required       |
+| **Contacts**               |       |      |                                     |
+| List Contacts              | ✅    | ✅   | Ownership validation required       |
+| **Statistics & Analytics** |       |      |                                     |
+| View Device Statistics     | ✅    | ❌   | Hanya admin                         |
+| View Daily Activity        | ✅    | ❌   | Hanya admin                         |
+| View Global Statistics     | ✅    | ❌   | Hanya admin                         |
+| **Admin Panel**            |       |      |                                     |
+| Manage Users (CRUD)        | ✅    | ❌   | Hanya admin                         |
+| View All Devices           | ✅    | ❌   | Hanya admin                         |
+| View All Messages          | ✅    | ❌   | Hanya admin                         |
+| View All Groups            | ✅    | ❌   | Hanya admin                         |
+| View All Contacts          | ✅    | ❌   | Hanya admin                         |
+| View All Jobs              | ✅    | ❌   | Hanya admin                         |
+| Monitor System Health      | ✅    | ❌   | Hanya admin                         |
 
-### Flow per Role (Implementasi Saat Ini)
+### User Flow Based on Role
 
-#### Admin
+#### 👤 User Flow
 
-1. Login → masuk ke dashboard admin (UI menggunakan `AdminLayout`).
-2. Create device via `POST /api/whatsapp-multi-device/devices`.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        USER JOURNEY                              │
+└─────────────────────────────────────────────────────────────────┘
 
-- Bisa set `userId` untuk membuat device milik user lain.
-- `deviceId` opsional (server akan generate jika tidak dikirim).
+1. REGISTRATION & LOGIN
+   ├── Register (Email, Username, Password, Full Name)
+   ├── Login dengan email & password
+   └── Terima JWT token (valid 24 jam)
 
-3. Monitoring & management via endpoint admin:
+2. PROFILE MANAGEMENT
+   ├── View Profile (GET /api/auth/profile)
+   └── Update Profile (PUT /api/auth/profile)
 
-- Users/devices/messages/groups/contacts/jobs/stats di `/api/admin/*`.
+3. DEVICE MANAGEMENT (Owned Devices Only)
+   ├── List My Devices (GET /api/whatsapp-multi-device/devices)
+   ├── Get Device Details (GET /api/whatsapp-multi-device/devices/:deviceId)
+   ├── Connect Device (POST /api/whatsapp-multi-device/devices/:deviceId/connect)
+   │   ├── Receive QR Code via SSE (real-time)
+   │   └── Scan QR dengan WhatsApp mobile
+   ├── View QR Code (GET /api/whatsapp-multi-device/devices/:deviceId/qr-image)
+   └── Disconnect Device (DELETE /api/whatsapp-multi-device/devices/:deviceId/disconnect)
 
-4. Bulk messaging hanya admin:
+4. MESSAGING OPERATIONS
+   ├── Send Text Message
+   │   └── POST /api/whatsapp-multi-device/devices/:deviceId/send-message
+   ├── Send Media Message
+   │   └── POST /api/whatsapp-multi-device/devices/:deviceId/send-media
+   ├── Schedule Message
+   │   └── POST /api/whatsapp-multi-device/devices/:deviceId/schedule-message
+   └── View Message History
+       └── GET /api/whatsapp-multi-device/devices/:deviceId/chat-history/:jid
 
-- `POST /api/whatsapp-multi-device/devices/:deviceId/jobs/send-text`
-- `POST /api/whatsapp-multi-device/devices/:deviceId/jobs/send-media`
-- Group media job: `POST /api/whatsapp-multi-device/devices/:deviceId/groups/:groupId/jobs/send-media`
+5. CONTACT & CHAT MANAGEMENT
+   ├── View Contacts (GET /api/whatsapp-multi-device/devices/:deviceId/contacts)
+   ├── View Chat History
+   │   ├── GET /api/whatsapp-multi-device/devices/:deviceId/chat-history/:jid
+   │   └── GET /api/whatsapp-multi-device/devices/:deviceId/daily-chat-list
+   └── Subscribe to Real-time Events
+       └── GET /api/events?token=<jwt_token> (SSE)
 
-#### User
+6. JOB MONITORING
+   ├── View Job Status (GET /api/whatsapp-multi-device/jobs/:jobId)
+   ├── Cancel Job (POST /api/whatsapp-multi-device/jobs/:jobId/cancel)
+   └── Receive Job Notifications (via SSE)
 
-1. Login → masuk ke dashboard user (UI menggunakan `UserLayout`).
-2. List device miliknya: `GET /api/whatsapp-multi-device/devices`.
-3. Connect & pairing untuk device miliknya:
+7. SSE EVENTS (Real-time Updates)
+   ├── Device Status Changes
+   ├── QR Code Generated
+   ├── Connection Status Updates
+   ├── Message Status Updates
+   ├── Job Progress Updates
+   └── Error Notifications
+```
 
-- `POST /api/whatsapp-multi-device/devices/:deviceId/connect`
-- Ambil QR: `GET /api/whatsapp-multi-device/devices/:deviceId/qr` atau `.../qr-image`
+#### 👨‍💼 Admin Flow
 
-4. Operasi yang user bisa lakukan pada device miliknya:
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        ADMIN JOURNEY                             │
+└─────────────────────────────────────────────────────────────────┘
 
-- Send message/media, chat history, list contacts, schedule message.
+1. AUTHENTICATION (Same as User)
+   ├── Login dengan admin account
+   ├── Terima JWT token dengan role=admin
+   └── Access admin-only endpoints
 
-5. Job queue:
+2. USER MANAGEMENT
+   ├── List All Users (GET /api/admin/users)
+   ├── Create New User (POST /api/admin/users)
+   ├── View User Details (GET /api/admin/users/:userId)
+   ├── Update User (PUT /api/admin/users/:userId)
+   ├── Delete User (DELETE /api/admin/users/:userId)
+   └── View User Devices & Statistics
 
-- User dapat melihat status & cancel job milik device-nya (`GET /jobs/:jobId`, `POST /jobs/:jobId/cancel`)
-- User tidak dapat membuat job bulk (endpoint create job admin-only).
+3. DEVICE MANAGEMENT (All Devices)
+   ├── List All Devices (GET /api/admin/devices)
+   ├── Create Device for User
+   │   ├── POST /api/whatsapp-multi-device/devices
+   │   ├── Specify userId (optional, untuk user tertentu)
+   │   └── Specify custom deviceId (optional)
+   ├── View Any Device Details
+   ├── Connect/Disconnect Any Device
+   ├── Get QR Code for Any Device
+   ├── Delete Any Device
+   ├── Cancel & Wipe Device Sessions
+   └── Monitor Device Status
 
-### Ownership Validation
+4. MESSAGE & CONTACT MANAGEMENT
+   ├── View All Messages (GET /api/admin/messages)
+   ├── Filter by device, user, status, date
+   ├── View All Contacts (GET /api/admin/contacts)
+   └── Message Statistics & Analysis
 
-Untuk endpoint yang bisa diakses oleh User dan Admin:
+5. GROUP MANAGEMENT
+   ├── List All Groups (GET /api/whatsapp-multi-device/devices/:deviceId/groups)
+   ├── Create Group (POST /api/whatsapp-multi-device/devices/:deviceId/groups)
+   ├── View Group Info & Participants
+   ├── Send Group Messages
+   ├── Invite/Kick Participants
+   ├── Promote/Demote Admins
+   └── Create & Execute Group Media Jobs
 
-- **User**: Hanya bisa akses resource miliknya sendiri (validasi ownership)
-- **Admin**: Bisa akses semua resource (bypass ownership)
+6. BULK MESSAGING & JOB QUEUE
+   ├── Create Bulk Text Job (POST /api/whatsapp-multi-device/devices/:deviceId/jobs/send-text)
+   │   ├── Specify multiple recipients
+   │   ├── Set message delay (default 3s)
+   │   └── Schedule optional
+   ├── Create Bulk Media Job
+   ├── Create Group Media Job (Bulk)
+   ├── Monitor All Jobs (GET /api/admin/jobs)
+   ├── View Job Details & Progress
+   ├── Cancel Any Job
+   └── Receive Job Completion Notifications
 
-Contoh validasi di controller:
+7. ANALYTICS & STATISTICS
+   ├── Global Statistics (GET /api/admin/stats)
+   │   ├── Total devices online
+   │   ├── Total messages sent/received
+   │   ├── Active users count
+   │   └── System health metrics
+   ├── Device Statistics (GET /api/whatsapp-multi-device/devices/:deviceId/statistics)
+   │   ├── Daily activity
+   │   ├── Message count (in/out)
+   │   ├── Active chats
+   │   └── Response rate
+   └── User Analytics
+       ├── Activity per user
+       ├── Device usage statistics
+       └── Message patterns
+
+8. MONITORING & ADMINISTRATION
+   ├── Health Check (GET /api/health)
+   ├── View System Logs
+   ├── Monitor Real-time Events
+   ├── Track SSE Connections
+   ├── System Performance Metrics
+   └── Admin Dashboard View
+       ├── User Management Section
+       ├── Device Management Section
+       ├── Message Management Section
+       ├── Statistics Section
+       └── System Status Section
+
+9. SSE EVENTS (Real-time Admin Notifications)
+   ├── User Account Changes
+   ├── Device Connection Status
+   ├── Bulk Message Progress
+   ├── Job Completion
+   ├── System Events
+   ├── Error Alerts
+   └── Performance Warnings
+```
+
+### Feature Access by Role
+
+#### **Admin-Only Features** ✅👨‍💼
+
+```
+1. User Management (CRUD)
+   - Create new user accounts
+   - Manage user information
+   - Delete user accounts
+   - View user activity
+
+2. Device Creation & Global Management
+   - Create devices for any user
+   - Delete any device
+   - Wipe device sessions
+   - Manage all device connections
+
+3. Bulk Messaging Operations
+   - Create bulk text message jobs
+   - Create bulk media jobs
+   - Schedule bulk messages
+   - Monitor all jobs globally
+   - Cancel any job
+
+4. Group Management
+   - Create groups on any device
+   - Manage group participants
+   - Manage group admins
+   - Send group messages
+   - Create group bulk media jobs
+
+5. Statistics & Analytics
+   - View global statistics
+   - Daily activity reports
+   - Message analytics
+   - Response rate analysis
+   - Device usage statistics
+   - User behavior analytics
+
+6. System Administration
+   - View system logs
+   - Monitor health status
+   - Admin panel access
+   - User list & management
+   - Device monitoring
+   - Message monitoring
+   - Performance metrics
+
+7. Data Export & Reports
+   - Export statistics
+   - Export message history
+   - Export user data
+   - Generate reports
+```
+
+#### **User Features** 👤
+
+```
+1. Personal Device Management
+   - List own devices
+   - Connect own devices (scan QR)
+   - Disconnect own devices
+   - View own device status
+   - Get QR code for pairing
+
+2. Personal Messaging
+   - Send text messages
+   - Send media messages
+   - Schedule messages
+   - View chat history
+   - View contact list
+   - View daily chat list
+
+3. Job Monitoring (Owned Devices)
+   - View job status (own device jobs)
+   - Cancel job (own device jobs)
+   - Receive job notifications
+
+4. Profile Management
+   - View own profile
+   - Update own profile
+   - Change password
+
+5. Real-time Updates
+   - Subscribe to SSE events
+   - Get device status updates
+   - Receive message notifications
+   - Get job progress updates
+```
+
+### Authentication & Authorization Flow
+
+#### **Token Generation & Verification**
 
 ```javascript
-if (device.userId !== req.user.id && req.user.role !== "admin") {
-  return res.status(403).json({ message: "Access denied" });
+// 1. Login → Generate Token
+POST /api/auth/login
+Request: { email, password }
+Response: {
+  accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  refreshToken: "...",
+  user: { id, username, email, role }
+}
+
+// Token Payload
+{
+  "id": 1,
+  "username": "johndoe",
+  "email": "john@example.com",
+  "role": "user|admin",
+  "iat": 1234567890,
+  "exp": 1234654290
+}
+
+// 2. Request with Token
+GET /api/whatsapp-multi-device/devices
+Headers: { Authorization: "Bearer <accessToken>" }
+
+// 3. Token Verification
+Middleware: auth.js
+- Extract token dari header
+- Verify signature dengan JWT_SECRET
+- Extract user info
+- Attach req.user
+
+// 4. Authorization Check
+Middleware: authorize.js
+- Cek req.user.role
+- Enforce role-based access
+- Return 403 jika unauthorized
+```
+
+#### **Request Authorization Flow**
+
+```
+Request with Token
+        │
+        ▼
+┌─────────────────────────┐
+│   auth.js Middleware    │  ← Verify JWT Token
+│ - Extract token         │
+│ - Verify signature      │  ✅ Token valid
+│ - Attach req.user       │
+└──────────────┬──────────┘
+               │
+               ▼
+┌─────────────────────────┐
+│ authorize.js Middleware │  ← Check Role
+│ - requireAdmin()        │
+│ - requireUser()         │  ✅ Role authorized
+└──────────────┬──────────┘
+               │
+               ▼
+┌─────────────────────────┐
+│    Controller Handler   │  ← Process Request
+│ - Extract parameters    │
+│ - Validate ownership    │  ✅ Ownership valid
+│ - Execute business      │
+│   logic                 │
+└──────────────┬──────────┘
+               │
+               ▼
+        Response
+```
+
+#### **Ownership Validation**
+
+```javascript
+// Example: Connect Device (User/Admin)
+// User hanya bisa connect device miliknya
+// Admin bisa connect any device
+
+async connectDevice(req, res) {
+  const { deviceId } = req.params;
+  const device = await getDevice(deviceId);
+
+  // Ownership validation
+  if (device.userId !== req.user.id && req.user.role !== "admin") {
+    return res.status(403).json({
+      message: "Anda tidak punya akses ke device ini"
+    });
+  }
+
+  // Process request...
+}
+
+// Pattern Validation
+┌─────────────────────────────────────────┐
+│    Is User Admin?                       │
+│         │                               │
+│    Yes  │  No                           │
+│         │  │                            │
+│         │  ▼                            │
+│         │  Is Resource Owner?          │
+│         │  │                           │
+│         │  Yes │  No                    │
+│         │  │   │  │                    │
+│         │  │   │  ▼                    │
+│         │  │   │  403 Forbidden        │
+│         │  │   │                       │
+│         ▼  ▼   │                       │
+│      Allow Access                      │
+└─────────────────────────────────────────┘
+```
+
+#### **SSE Connection Authentication**
+
+```javascript
+// SSE Token dapat dikirim via:
+// 1. Query parameter (untuk EventSource Web API)
+GET /api/events?token=<accessToken>
+
+// 2. Header Authorization (jika client support)
+GET /api/events
+Headers: { Authorization: "Bearer <accessToken>" }
+
+// Verification di SSE Middleware
+- Extract token dari query atau header
+- Verify JWT token
+- Setup SSE connection per user
+- Subscribe ke user-specific events
+- Cleanup saat disconnect
+```
+
+### Role Permission Implementation
+
+#### **Middleware Authorization**
+
+```javascript
+// src/middleware/authorize.js
+
+// Admin-only endpoint
+const requireAdmin = (req, res, next) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin only" });
+  }
+  next();
+};
+
+// User atau Admin
+const requireUser = (req, res, next) => {
+  if (!["user", "admin"].includes(req.user.role)) {
+    return res.status(403).json({ message: "Unauthorized" });
+  }
+  next();
+};
+
+// Usage di Routes
+router.post("/devices", requireAdmin, createDevice);
+router.get("/devices", requireUser, listDevices);
+```
+
+#### **Controller Ownership Validation**
+
+```javascript
+// Pattern: Admin dapat akses semua, User hanya miliknya sendiri
+
+async getDevice(req, res) {
+  const { deviceId } = req.params;
+  const device = await Device.findByDeviceId(deviceId);
+
+  // Admin bypass, User harus owner
+  const isAuthorized =
+    req.user.role === "admin" ||
+    device.userId === req.user.id;
+
+  if (!isAuthorized) {
+    return res.status(403).json({ message: "Access denied" });
+  }
+
+  res.json({ success: true, device });
 }
 ```
 
-### Authentication Flow
+---
 
-1. User login → dapat JWT token
-2. Token di-verify oleh middleware `auth.js`
-3. User info di-attach ke `req.user`
-4. Authorization middleware (`authorize.js`) cek role
-5. Controller cek ownership (jika diperlukan)
+## � Current Implementation Status
 
-Untuk detail lengkap tentang role dan permission, lihat bagian [Permission Matrix](#permission-matrix) di atas.
+### Sistem Status Saat Ini (Januari 2026)
+
+#### ✅ Fitur yang Sudah Diimplementasi
+
+**Core Features:**
+
+- ✅ Multi-device architecture dengan Baileys integration
+- ✅ Session management dengan auto-restore capability
+- ✅ QR code generation dan pairing mechanism
+- ✅ Device lifecycle management (create, connect, disconnect, delete)
+- ✅ Complete messaging system (text, media, scheduled)
+
+**Authentication & Authorization:**
+
+- ✅ JWT-based authentication dengan access & refresh tokens
+- ✅ Role-based access control (Admin & User)
+- ✅ Ownership validation untuk resource management
+- ✅ SSE authentication dengan token support
+
+**Bulk Operations:**
+
+- ✅ Job queue system untuk bulk messaging
+- ✅ Async job processing dengan real-time progress tracking
+- ✅ Job cancellation dengan graceful shutdown
+- ✅ Error handling & retry mechanism
+
+**Group Management:**
+
+- ✅ Create, list, dan get group information
+- ✅ Participant management (invite, kick)
+- ✅ Admin management (promote, demote)
+- ✅ Group messaging support
+- ✅ Group media jobs (bulk)
+
+**Chat & Contact:**
+
+- ✅ Chat history retrieval per contact
+- ✅ Daily chat list functionality
+- ✅ Contact list management
+- ✅ Message status tracking
+
+**Real-time Features:**
+
+- ✅ Server-Sent Events (SSE) untuk real-time updates
+- ✅ Device status notifications
+- ✅ QR code real-time delivery
+- ✅ Job progress real-time updates
+- ✅ Message status updates
+
+**Admin Features:**
+
+- ✅ User management (CRUD)
+- ✅ Global device monitoring
+- ✅ Message monitoring & filtering
+- ✅ Job queue monitoring
+- ✅ Global statistics & analytics
+- ✅ System health monitoring
+
+**Statistics & Analytics:**
+
+- ✅ Daily activity tracking
+- ✅ Message statistics (in/out)
+- ✅ Active chats counting
+- ✅ Response rate calculation
+- ✅ Per-device statistics
+- ✅ Global statistics dashboard
+
+#### 🔄 Current API Endpoints
+
+**Authentication (Public):**
+
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User login
+- `POST /api/auth/refresh-token` - Token refresh
+
+**Device Management (User & Admin):**
+
+- `GET /api/whatsapp-multi-device/devices` - List devices
+- `GET /api/whatsapp-multi-device/devices/:deviceId` - Get device
+- `POST /api/whatsapp-multi-device/devices/:deviceId/connect` - Connect device
+- `DELETE /api/whatsapp-multi-device/devices/:deviceId/disconnect` - Disconnect device
+- `GET /api/whatsapp-multi-device/devices/:deviceId/qr-image` - Get QR code
+
+**Messaging (User & Admin):**
+
+- `POST /api/whatsapp-multi-device/devices/:deviceId/send-message` - Send text
+- `POST /api/whatsapp-multi-device/devices/:deviceId/send-media` - Send media
+- `GET /api/whatsapp-multi-device/devices/:deviceId/chat-history/:jid` - Get chat history
+- `GET /api/whatsapp-multi-device/devices/:deviceId/contacts` - List contacts
+
+**Job Queue (Admin & User):**
+
+- `POST /api/whatsapp-multi-device/devices/:deviceId/jobs/send-text` - Create bulk text job
+- `POST /api/whatsapp-multi-device/devices/:deviceId/jobs/send-media` - Create bulk media job
+- `GET /api/whatsapp-multi-device/jobs/:jobId` - Get job status
+- `POST /api/whatsapp-multi-device/jobs/:jobId/cancel` - Cancel job
+
+**Groups (Admin Only):**
+
+- `GET /api/whatsapp-multi-device/devices/:deviceId/groups` - List groups
+- `POST /api/whatsapp-multi-device/devices/:deviceId/groups` - Create group
+- `GET /api/whatsapp-multi-device/devices/:deviceId/groups/:groupId/info` - Group info
+- `POST /api/whatsapp-multi-device/devices/:deviceId/send-group-message` - Send group message
+
+**Admin (Admin Only):**
+
+- `GET /api/admin/users` - List users
+- `POST /api/admin/users` - Create user
+- `GET /api/admin/devices` - List all devices
+- `GET /api/admin/messages` - List all messages
+- `GET /api/admin/stats` - Global statistics
+
+**Real-time (User & Admin):**
+
+- `GET /api/events` - SSE connection untuk real-time events
+
+#### 🎯 Role Implementation Matrix
+
+**Admin Role:**
+
+- Full system access
+- All CRUD operations
+- User management
+- Device creation & global management
+- Bulk messaging operations
+- Global statistics
+- System monitoring
+
+**User Role:**
+
+- Personal device management (owned only)
+- Personal messaging operations
+- Chat history access (owned devices)
+- Job monitoring (owned device jobs)
+- Profile management
+- Real-time updates (owned devices)
+
+#### 🔒 Security Implementation
+
+**Authentication:**
+
+- JWT tokens dengan 24-hour expiration
+- Refresh token mechanism untuk extended sessions
+- Secure password hashing dengan bcryptjs
+- Token signature verification
+
+**Authorization:**
+
+- Middleware-based role checking
+- Controller-level ownership validation
+- Resource-level permission checks
+- Admin bypass untuk special operations
+
+**Input Validation:**
+
+- Joi schemas untuk semua endpoints
+- Request body validation
+- Query parameter validation
+- Path parameter validation
+
+**Rate Limiting:**
+
+- 100 requests per 15 minutes per IP
+- Protection against abuse
+- Configurable limits
+
+#### 📈 Performance Optimizations
+
+- Pagination untuk large datasets
+- Message/job query optimization
+- Connection pooling untuk database
+- SSE efficient broadcasting
+- Session storage optimization
+
+### Dashboard Features
+
+#### Admin Dashboard (`AdminLayout`)
+
+```
+┌─────────────────────────────────────────┐
+│        ADMIN DASHBOARD                  │
+├─────────────────────────────────────────┤
+│ Dashboard:                              │
+│  - System Overview                      │
+│  - Total Users, Devices, Messages       │
+│  - Online Devices Status                │
+│  - Recent Activities Feed               │
+│                                         │
+│ User Management:                        │
+│  - User List (CRUD)                     │
+│  - User Details & Activity              │
+│  - Assign Devices to Users              │
+│                                         │
+│ Device Management:                      │
+│  - All Devices Overview                 │
+│  - Connection Status Monitor            │
+│  - Create/Delete Devices                │
+│  - Device Settings                      │
+│                                         │
+│ Message Management:                     │
+│  - All Messages View                    │
+│  - Filter & Search                      │
+│  - Message Status Tracking              │
+│  - Bulk Operations                      │
+│                                         │
+│ Job Management:                         │
+│  - Job Queue Overview                   │
+│  - Job Progress Tracking                │
+│  - Job History                          │
+│  - Cancel Jobs                          │
+│                                         │
+│ Analytics & Reports:                    │
+│  - Global Statistics                    │
+│  - Usage Analytics                      │
+│  - Activity Reports                     │
+│  - Export Data                          │
+│                                         │
+│ Settings:                               │
+│  - System Configuration                 │
+│  - User Roles Management                │
+│  - API Settings                         │
+│  - Security Settings                    │
+└─────────────────────────────────────────┘
+```
+
+#### User Dashboard (`UserLayout`)
+
+```
+┌─────────────────────────────────────────┐
+│        USER DASHBOARD                   │
+├─────────────────────────────────────────┤
+│ Dashboard:                              │
+│  - Device Status Overview               │
+│  - Quick Actions                        │
+│  - Recent Messages                      │
+│                                         │
+│ My Devices:                             │
+│  - Device List                          │
+│  - Connect New Device (QR Scan)         │
+│  - Device Settings                      │
+│  - Device Status                        │
+│                                         │
+│ Messaging:                              │
+│  - Send Messages                        │
+│  - Send Media                           │
+│  - Message History                      │
+│  - Contacts                             │
+│                                         │
+│ Chat History:                           │
+│  - Contact Chats                        │
+│  - Chat Details                         │
+│  - Search Conversations                 │
+│                                         │
+│ Profile:                                │
+│  - Profile Information                  │
+│  - Change Password                      │
+│  - Account Settings                     │
+│                                         │
+│ Notifications:                          │
+│  - Real-time Updates                    │
+│  - Connection Status                    │
+│  - New Messages Alert                   │
+│  - Job Notifications                    │
+└─────────────────────────────────────────┘
+```
 
 ---
 
-## 💻 Development
+## �💻 Development
 
 ### Project Structure
 
