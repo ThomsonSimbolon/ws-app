@@ -121,6 +121,20 @@ export interface ProfileResponse {
   user: Profile;
 }
 
+export interface Contact {
+  id?: string;
+  name?: string;
+  phoneNumber: string;
+  jid: string;
+  profilePicture?: string;
+}
+
+export interface ContactsResponse {
+  contacts: Contact[];
+  deviceId: string;
+  total: number;
+}
+
 /**
  * Get user's devices
  */
@@ -587,6 +601,36 @@ export async function updateProfile(
     if (!response.success || !response.data) {
       throw {
         message: response.message || "Failed to update profile",
+      } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Get contacts for a device
+ */
+export async function getContacts(
+  deviceId: string,
+  search?: string
+): Promise<ContactsResponse> {
+  try {
+    const params = new URLSearchParams();
+    if (search) params.append("search", search);
+
+    const queryString = params.toString();
+    const endpoint = `/whatsapp-multi-device/devices/${deviceId}/contacts${
+      queryString ? `?${queryString}` : ""
+    }`;
+
+    const response = await get<ContactsResponse>(endpoint);
+
+    if (!response.success || !response.data) {
+      throw {
+        message: response.message || "Failed to fetch contacts",
       } as ApiError;
     }
 

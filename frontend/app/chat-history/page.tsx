@@ -6,7 +6,7 @@ import UserLayout from '@/components/layout/UserLayout';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { useAppSelector, useAppDispatch } from '@/hooks/useAppDispatch';
-import { fetchUserDevices } from '@/store/slices/userDashboardSlice';
+import { fetchUserDevices, fetchConnectedDevices } from '@/store/slices/userDashboardSlice';
 import { getDailyChatList, getChatHistory, DailyChat, ChatMessage } from '@/lib/userService';
 import { ApiError } from '@/lib/api';
 
@@ -17,7 +17,7 @@ export default function ChatHistoryPage() {
   const user = useAppSelector((state) => state.auth.user);
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
   
-  const { devices, isLoadingDevices } = useAppSelector((state) => state.userDashboard);
+  const { connectedDevices, isLoadingDevices } = useAppSelector((state) => state.userDashboard);
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [selectedJid, setSelectedJid] = useState<string>('');
@@ -39,11 +39,16 @@ export default function ChatHistoryPage() {
     }
 
     dispatch(fetchUserDevices());
+    dispatch(fetchConnectedDevices());
 
-    // Get jid from query params if available
+    // Get jid and deviceId from query params if available
     const jid = searchParams.get('jid');
+    const deviceId = searchParams.get('deviceId');
     if (jid) {
       setSelectedJid(jid);
+    }
+    if (deviceId) {
+      setSelectedDeviceId(deviceId);
     }
   }, [isAuthenticated, user, router, dispatch, searchParams]);
 
@@ -68,7 +73,7 @@ export default function ChatHistoryPage() {
     try {
       const today = new Date().toISOString().split('T')[0];
       const response = await getDailyChatList(selectedDeviceId, today);
-      setChats(response.chats);
+      setChats(response.chats || []);
     } catch (err) {
       const apiError = err as ApiError;
       setError(apiError.message || 'Failed to load chats');
@@ -98,7 +103,8 @@ export default function ChatHistoryPage() {
     return null;
   }
 
-  const connectedDevices = devices.filter((d) => d.status === 'connected' && d.isActive);
+  // connectedDevices now comes directly from Redux state (via fetchConnectedDevices)
+  // which has real-time status from the backend
 
   return (
     <UserLayout>
