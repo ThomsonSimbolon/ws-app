@@ -4,7 +4,7 @@ const Joi = require("joi");
  * Normalize phone number sesuai dokumentasi
  * Format yang didukung: +62, 62, atau 0 diikuti 8-13 digit
  * @param {string} phone - Phone number
- * @returns {string|null} Normalized phone number (tanpa +, tanpa leading 0) atau null jika invalid
+ * @returns {string|null} Normalized phone number dengan format 62xxxxxxxxx (untuk WhatsApp JID) atau null jika invalid
  */
 function normalizePhoneNumber(phone) {
   if (!phone || typeof phone !== "string") {
@@ -26,12 +26,14 @@ function normalizePhoneNumber(phone) {
   // Remove all non-digit characters
   cleaned = cleaned.replace(/\D/g, "");
 
-  // Validate: should be 8-13 digits after normalization
+  // Validate: should be 8-13 digits after normalization (local number)
   if (cleaned.length < 8 || cleaned.length > 13) {
     return null;
   }
 
-  return cleaned;
+  // Return dengan 62 prefix untuk format WhatsApp JID yang benar
+  // WhatsApp JID format: 62xxxxxxxxx@s.whatsapp.net
+  return "62" + cleaned;
 }
 
 /**

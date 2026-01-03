@@ -7,7 +7,7 @@ import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import { useAppSelector, useAppDispatch } from '@/hooks/useAppDispatch';
-import { fetchUserDevices } from '@/store/slices/userDashboardSlice';
+import { fetchUserDevices, fetchConnectedDevices } from '@/store/slices/userDashboardSlice';
 import { sendMessage, Device } from '@/lib/userService';
 import { ApiError } from '@/lib/api';
 
@@ -19,7 +19,8 @@ function SendMessageContent() {
   const user = useAppSelector((state) => state.auth.user);
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
   
-  const { devices, isLoadingDevices } = useAppSelector((state) => state.userDashboard);
+  // Use connectedDevices directly from Redux for accurate status
+  const { devices, connectedDevices, isLoadingDevices } = useAppSelector((state) => state.userDashboard);
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [phone, setPhone] = useState('');
@@ -27,8 +28,16 @@ function SendMessageContent() {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Mark as mounted on client side to prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
+    if (!mounted) return;
+
     if (!isAuthenticated) {
       router.push('/auth/login');
       return;
@@ -39,7 +48,9 @@ function SendMessageContent() {
       return;
     }
 
+    // Fetch both devices and connected devices. Use connected devices for dropdown
     dispatch(fetchUserDevices());
+    dispatch(fetchConnectedDevices());
 
     // Get deviceId from query params if available
     const deviceId = searchParams.get('deviceId');
@@ -47,7 +58,7 @@ function SendMessageContent() {
       setSelectedDeviceId(deviceId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, user, router, dispatch, searchParams]);
+  }, [mounted, isAuthenticated, user, router, dispatch, searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,11 +93,17 @@ function SendMessageContent() {
     }
   };
 
+  // Wait for mount to avoid hydration mismatch
+  if (!mounted) {
+    return null;
+  }
+
   if (!user || user.role !== 'user') {
     return null;
   }
 
-  const connectedDevices = devices.filter((d) => d.status === 'connected' && d.isActive);
+  // connectedDevices now comes directly from Redux state (via fetchConnectedDevices)
+  // which has real-time status from the backend
 
   return (
     <div className="space-y-6">
