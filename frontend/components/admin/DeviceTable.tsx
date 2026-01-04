@@ -7,9 +7,16 @@ import Button from '@/components/ui/Button';
 interface DeviceTableProps {
   devices: Device[];
   isLoading?: boolean;
+  onDisconnect: (deviceId: string) => void;
+  onDelete: (deviceId: string) => void;
 }
 
-export default function DeviceTable({ devices, isLoading = false }: DeviceTableProps) {
+export default function DeviceTable({ 
+  devices, 
+  isLoading = false, 
+  onDisconnect, 
+  onDelete 
+}: DeviceTableProps) {
   const formatRelativeTime = (dateString?: string) => {
     if (!dateString) return 'Never';
     const date = new Date(dateString);
@@ -36,6 +43,10 @@ export default function DeviceTable({ devices, isLoading = false }: DeviceTableP
       default:
         return 'info';
     }
+  };
+
+  const canDisconnect = (status: string) => {
+    return ['connected', 'connecting'].includes(status);
   };
 
   if (isLoading) {
@@ -123,6 +134,22 @@ export default function DeviceTable({ devices, isLoading = false }: DeviceTableP
                       </Button>
                     </Link>
                   )}
+                  {canDisconnect(device.status) && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => onDisconnect(device.deviceId)}
+                    >
+                      Disconnect
+                    </Button>
+                  )}
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => onDelete(device.deviceId)}
+                  >
+                    Delete
+                  </Button>
                 </div>
               </td>
             </tr>

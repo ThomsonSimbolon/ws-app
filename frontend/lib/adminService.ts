@@ -360,7 +360,7 @@ export async function getUsers(
     queryParams.append("limit", limit.toString());
     if (search) queryParams.append("search", search);
     if (role) queryParams.append("role", role);
-    if (isActive !== undefined && isActive !== "") {
+    if (isActive !== undefined && String(isActive) !== "") {
       queryParams.append("isActive", isActive.toString());
     }
 
@@ -402,9 +402,9 @@ export async function getDevices(
     const queryParams = new URLSearchParams();
     queryParams.append("page", page.toString());
     queryParams.append("limit", limit.toString());
-    if (userId && userId !== "") queryParams.append("userId", userId.toString());
-    if (status && status !== "") queryParams.append("status", status);
-    if (isActive !== undefined && isActive !== "") {
+    if (userId) queryParams.append("userId", userId.toString());
+    if (status) queryParams.append("status", status);
+    if (isActive !== undefined && String(isActive) !== "") {
       queryParams.append("isActive", isActive.toString());
     }
     if (search) queryParams.append("search", search);
@@ -459,6 +459,44 @@ export async function createDevice(
 }
 
 /**
+ * Disconnect device (Admin)
+ */
+export async function disconnectDevice(deviceId: string): Promise<void> {
+  try {
+    const response = await del<{ message?: string }>(
+      `/whatsapp-multi-device/devices/${deviceId}/disconnect`
+    );
+
+    if (!response.success) {
+      throw {
+        message: response.message || "Failed to disconnect device",
+      } as ApiError;
+    }
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Delete device (Admin only)
+ */
+export async function deleteDevice(deviceId: string): Promise<void> {
+  try {
+    const response = await del<{ message?: string }>(
+      `/whatsapp-multi-device/devices/${deviceId}`
+    );
+
+    if (!response.success) {
+      throw {
+        message: response.message || "Failed to delete device",
+      } as ApiError;
+    }
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
  * Get messages with pagination and filters
  */
 export async function getMessages(
@@ -482,12 +520,12 @@ export async function getMessages(
     const queryParams = new URLSearchParams();
     queryParams.append("page", page.toString());
     queryParams.append("limit", limit.toString());
-    if (userId && userId !== "") queryParams.append("userId", userId.toString());
-    if (deviceId && deviceId !== "") queryParams.append("deviceId", deviceId);
+    if (userId) queryParams.append("userId", userId.toString());
+    if (deviceId) queryParams.append("deviceId", deviceId);
     if (fromNumber) queryParams.append("fromNumber", fromNumber);
     if (toNumber) queryParams.append("toNumber", toNumber);
-    if (direction && direction !== "") queryParams.append("direction", direction);
-    if (status && status !== "") queryParams.append("status", status);
+    if (direction) queryParams.append("direction", direction);
+    if (status) queryParams.append("status", status);
     if (startDate) queryParams.append("startDate", startDate);
     if (endDate) queryParams.append("endDate", endDate);
 
@@ -606,10 +644,10 @@ export async function getGroups(
     const queryParams = new URLSearchParams();
     queryParams.append("page", page.toString());
     queryParams.append("limit", limit.toString());
-    if (deviceId && deviceId !== "") queryParams.append("deviceId", deviceId);
-    if (userId && userId !== "") queryParams.append("userId", userId.toString());
+    if (deviceId) queryParams.append("deviceId", deviceId);
+    if (userId) queryParams.append("userId", userId.toString());
     if (search) queryParams.append("search", search);
-    if (isActive !== undefined && isActive !== "") {
+    if (isActive !== undefined && String(isActive) !== "") {
       queryParams.append("isActive", isActive.toString());
     }
 
@@ -642,7 +680,7 @@ export async function getContacts(
     const queryParams = new URLSearchParams();
     queryParams.append("page", page.toString());
     queryParams.append("limit", limit.toString());
-    if (userId && userId !== "") queryParams.append("userId", userId.toString());
+    if (userId) queryParams.append("userId", userId.toString());
     if (search) queryParams.append("search", search);
     if (isBlocked !== undefined && isBlocked !== "") {
       queryParams.append("isBlocked", isBlocked.toString());
@@ -675,8 +713,8 @@ export async function getJobs(
     
     // Build query string
     const queryParams = new URLSearchParams();
-    if (status && status !== "") queryParams.append("status", status);
-    if (type && type !== "") queryParams.append("type", type);
+    if (status) queryParams.append("status", status);
+    if (type) queryParams.append("type", type);
     queryParams.append("limit", limit.toString());
 
     const response = await get<JobsResponse>(

@@ -7,7 +7,7 @@ import Button from '@/components/ui/Button';
 import DeviceTable from '@/components/admin/DeviceTable';
 import DeviceFilters from '@/components/admin/DeviceFilters';
 import DeviceForm from '@/components/admin/DeviceForm';
-import { getDevices, createDevice, GetDevicesParams } from '@/lib/adminService';
+import { getDevices, createDevice, disconnectDevice, deleteDevice, GetDevicesParams } from '@/lib/adminService';
 import { ApiError } from '@/lib/api';
 
 export default function DevicesListPage() {
@@ -33,6 +33,18 @@ export default function DevicesListPage() {
   // Create Device Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+
+  // Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    type: 'disconnect' | 'delete' | null;
+    deviceId: string | null;
+  }>({
+    isOpen: false,
+    type: null,
+    deviceId: null,
+  });
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
 
   // Fetch devices
   const fetchDevices = useCallback(async (page: number = 1) => {
@@ -102,6 +114,45 @@ export default function DevicesListPage() {
     }
   };
 
+  const handleDisconnectDevice = (deviceId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      type: 'disconnect',
+      deviceId,
+    });
+  };
+
+  const handleDeleteDevice = (deviceId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      type: 'delete',
+      deviceId,
+    });
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmModal.deviceId || !confirmModal.type) return;
+
+    try {
+      setIsProcessingAction(true);
+      if (confirmModal.type === 'disconnect') {
+        await disconnectDevice(confirmModal.deviceId);
+      } else {
+        await deleteDevice(confirmModal.deviceId);
+      }
+      
+      setConfirmModal({ isOpen: false, type: null, deviceId: null });
+      fetchDevices(pagination.currentPage);
+    } catch (err) {
+      const apiError = err as ApiError;
+      // Close modal and show error in page
+      setConfirmModal({ isOpen: false, type: null, deviceId: null });
+      setError(apiError.message || `Failed to ${confirmModal.type} device`);
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -144,6 +195,8 @@ export default function DevicesListPage() {
           <DeviceTable
             devices={devices}
             isLoading={isLoading}
+            onDisconnect={handleDisconnectDevice}
+            onDelete={handleDeleteDevice}
           />
         </Card>
 
@@ -196,6 +249,42 @@ export default function DevicesListPage() {
                   onCancel={() => setShowCreateModal(false)}
                   isLoading={isCreating}
                 />
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Confirmation Modal */}
+        {confirmModal.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <Card padding="lg" className="max-w-md w-full mx-4">
+              <div className="space-y-4">
+                <h2 className="text-xl font-bold text-text-primary">
+                  {confirmModal.type === 'disconnect' ? 'Disconnect Device?' : 'Delete Device?'}
+                </h2>
+                <p className="text-text-secondary">
+                  {confirmModal.type === 'disconnect' 
+                    ? 'Are you sure you want to disconnect this device? The user will need to scan the QR code again to reconnect.' 
+                    : 'Are you sure you want to permanently delete this device? This action cannot be undone and all associated data will be removed.'}
+                </p>
+                <div className="flex justify-end gap-3 mt-6">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+                    disabled={isProcessingAction}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant={confirmModal.type === 'disconnect' ? 'warning' : 'danger'}
+                    onClick={handleConfirmAction}
+                    disabled={isProcessingAction}
+                  >
+                    {isProcessingAction 
+                      ? 'Processing...' 
+                      : (confirmModal.type === 'disconnect' ? 'Disconnect' : 'Delete')}
+                  </Button>
+                </div>
               </div>
             </Card>
           </div>
