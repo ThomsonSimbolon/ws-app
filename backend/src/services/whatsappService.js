@@ -8,7 +8,7 @@ const QRCode = require("qrcode");
 const path = require("path");
 const fs = require("fs");
 const axios = require("axios");
-const { WhatsAppSession, Message } = require("../models");
+const { WhatsAppSession, Message, Contact } = require("../models");
 const logger = require("../utils/logger");
 const deviceManager = require("./deviceManager");
 
@@ -595,14 +595,33 @@ class WhatsAppService {
     socket.ev.on("messages.upsert", async (messageUpdate) => {
       try {
         const { messages, type } = messageUpdate;
-        if (type === "notify") {
+        
+        // Process both new messages (notify) and history sync (append)
+        if (type === "notify" || type === "append") {
+          const isHistory = type === "append";
+          
           for (const message of messages) {
-            await this.handleIncomingMessageForDevice(deviceId, message);
+            await this.handleIncomingMessageForDevice(deviceId, message, isHistory);
           }
         }
       } catch (error) {
         logger.error(
           `❌ Error handling messages for device ${deviceId}:`,
+          error
+        );
+      }
+    });
+
+    // Contacts events
+    socket.ev.on("contacts.upsert", async (contacts) => {
+      try {
+        await this.saveContactsForDevice(deviceId, contacts);
+        logger.info(
+          `👥 Contacts synced for device ${deviceId}: ${contacts.length} contacts`
+        );
+      } catch (error) {
+        logger.error(
+          `❌ Failed to save contacts for device ${deviceId}:`,
           error
         );
       }
@@ -1055,8 +1074,11 @@ class WhatsAppService {
 
   /**
    * Handle incoming message for device
+   * @param {string} deviceId
+   * @param {Object} message
+   * @param {boolean} isHistory - If true, skip real-time notifications
    */
-  async handleIncomingMessageForDevice(deviceId, message) {
+  async handleIncomingMessageForDevice(deviceId, message, isHistory = false) {
     try {
       const sessionState = this.sessionStates.get(deviceId);
       if (!sessionState) return;
@@ -1066,6 +1088,12 @@ class WhatsAppService {
       const messageContent =
         message.message?.conversation ||
         message.message?.extendedTextMessage?.text ||
+        message.message?.imageMessage?.caption ||
+        (message.message?.imageMessage ? "[Image]" : null) ||
+        (message.message?.videoMessage ? "[Video]" : null) ||
+        (message.message?.documentMessage ? "[Document]" : null) ||
+        (message.message?.audioMessage ? "[Audio]" : null) ||
+        (message.message?.stickerMessage ? "[Sticker]" : null) ||
         "[Media]";
 
       const userId = sessionState.userId;
@@ -1074,34 +1102,46 @@ class WhatsAppService {
       // Get session ID from database
       const sessionId = await this.getSessionIdFromDBForDevice(deviceId);
 
-      // Save message to database
-      await Message.create({
-        userId,
-        sessionId: sessionId,
-        messageId: message.key.id,
-        fromNumber: fromMe ? sessionState.phoneNumber : remoteJid.split("@")[0],
-        toNumber: fromMe ? remoteJid.split("@")[0] : sessionState.phoneNumber,
-        messageType: "text",
-        content: messageContent,
-        direction: fromMe ? "outgoing" : "incoming",
-        status: "delivered",
-        timestamp: new Date(message.messageTimestamp * 1000),
-        metadata: {
-          key: message.key,
-          pushName: message.pushName,
-        },
-      });
+      // Filter out status updates (stories)
+      if (remoteJid === "status@broadcast") return;
 
-      // Send to SSE clients
-      this.sendSSEUpdate(userId, {
-        type: "new-message",
-        data: {
-          from: fromMe ? "me" : remoteJid,
-          message: messageContent,
-          timestamp: new Date(message.messageTimestamp * 1000).toISOString(),
-        },
-        timestamp: new Date().toISOString(),
-      });
+      // Save message to database
+      try {
+        await Message.create({
+          userId,
+          sessionId: sessionId,
+          messageId: message.key.id,
+          fromNumber: fromMe ? sessionState.phoneNumber : remoteJid.split("@")[0],
+          toNumber: fromMe ? remoteJid.split("@")[0] : sessionState.phoneNumber,
+          messageType: "text", // TODO: Detect type better
+          content: messageContent,
+          direction: fromMe ? "outgoing" : "incoming",
+          status: "delivered",
+          timestamp: new Date(message.messageTimestamp * 1000),
+          metadata: {
+            key: message.key,
+            pushName: message.pushName,
+          },
+        });
+      } catch (dbError) {
+        // Ignore unique constraint errors (duplicates)
+        if (dbError.name !== 'SequelizeUniqueConstraintError') {
+          // logger.warn(`Failed to save message ${message.key.id}: ${dbError.message}`);
+        }
+      }
+
+      // Send to SSE clients ONLY if NOT history
+      if (!isHistory) {
+        this.sendSSEUpdate(userId, {
+          type: "new-message",
+          data: {
+            from: fromMe ? "me" : remoteJid,
+            message: messageContent,
+            timestamp: new Date(message.messageTimestamp * 1000).toISOString(),
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
     } catch (error) {
       logger.error(
         `Error handling incoming message for device ${deviceId}:`,
