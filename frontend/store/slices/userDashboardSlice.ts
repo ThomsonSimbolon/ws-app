@@ -167,6 +167,7 @@ const userDashboardSlice = createSlice({
       .addCase(fetchConnectedDevices.fulfilled, (state, action) => {
         state.connectedDevices = action.payload;
         state.connectedDevicesCount = action.payload.length;
+        state.isLoadingDevices = false;
       })
       .addCase(fetchConnectedDevices.rejected, (state) => {
         state.isLoadingDevices = false;

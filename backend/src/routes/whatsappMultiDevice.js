@@ -282,6 +282,13 @@ router.post(
   whatsappMultiDeviceController.scheduleMessage
 );
 
+router.get(
+  "/devices/:deviceId/scheduled-messages",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.listScheduledMessages
+);
+
 // Statistics Routes (Admin Only)
 router.get(
   "/devices/:deviceId/statistics",

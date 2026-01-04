@@ -3282,6 +3282,55 @@ const scheduleMessage = async (req, res) => {
 };
 
 /**
+ * List scheduled messages
+ */
+const listScheduledMessages = async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const userId = req.user.id;
+
+    // Verify device belongs to user
+    const device = await deviceManager.getDevice(deviceId);
+    if (!device) {
+      const { response, statusCode } = errorResponse(
+        "Device tidak ditemukan",
+        null,
+        404
+      );
+      return res.status(statusCode).json(response);
+    }
+
+    if (device.userId !== userId && req.user.role !== "admin") {
+      const { response, statusCode } = errorResponse(
+        "Akses ditolak",
+        null,
+        403
+      );
+      return res.status(statusCode).json(response);
+    }
+
+    const messages = await scheduledMessageService.listScheduledMessages(deviceId);
+
+    const { response, statusCode } = successResponse({
+      deviceId: deviceId,
+      messages: messages,
+      count: messages.length,
+    });
+
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("List scheduled messages error:", error);
+    const { response, statusCode } = errorResponse(
+      "Gagal mendapatkan daftar pesan terjadwal",
+      error.message,
+      500
+    );
+    res.status(statusCode).json(response);
+  }
+};
+
+
+/**
  * Get daily chat list (active chats for a specific date)
  */
 const getDailyChatList = async (req, res) => {
@@ -3644,5 +3693,6 @@ module.exports = {
   getDailyActivity,
   getContacts,
   scheduleMessage,
+  listScheduledMessages,
 };
 

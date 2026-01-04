@@ -6,8 +6,8 @@ import { ReduxProvider } from "@/store/provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Admin Dashboard",
-  description: "Modern admin dashboard template",
+  title: "WhatsApp Dashboard",
+  description: "WhatsApp Multi-Device Dashboard",
 };
 
 export default function RootLayout({

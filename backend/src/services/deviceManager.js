@@ -280,13 +280,19 @@ class DeviceManager {
       });
 
       return devices.map((device) => ({
+        id: device.id,
+        userId: device.userId,
         deviceId: device.deviceId,
         deviceName: device.deviceName,
-        isConnected: device.status === "connected",
+        status: "connected", // Force status to connected since we filtered for it
+        isActive: device.isActive,
+        isConnected: true,
         phoneNumber: device.phoneNumber,
         createdAt: device.createdAt,
+        updatedAt: device.updatedAt,
         lastActivity: device.lastSeen || device.updatedAt,
-        connectionAttempts: 1, // TODO: Track connection attempts
+        deviceInfo: device.deviceInfo,
+        connectionAttempts: 1, 
       }));
     } catch (error) {
       logger.error(`❌ Error listing connected devices:`, error);

@@ -7,6 +7,7 @@ const Message = require("./Message");
 const Contact = require("./Contact");
 const Group = require("./Group");
 const Statistic = require("./Statistic");
+const ScheduledMessage = require("./ScheduledMessage");
 
 // Define associations
 User.hasMany(WhatsAppSession, {
@@ -35,6 +36,27 @@ WhatsAppSession.hasMany(Message, {
 });
 
 Message.belongsTo(WhatsAppSession, {
+  foreignKey: "session_id",
+  as: "session",
+});
+
+// Scheduled Message Associations
+User.hasMany(ScheduledMessage, {
+  foreignKey: "user_id",
+  as: "scheduledMessages",
+});
+
+ScheduledMessage.belongsTo(User, {
+  foreignKey: "user_id",
+  as: "user",
+});
+
+WhatsAppSession.hasMany(ScheduledMessage, {
+  foreignKey: "session_id",
+  as: "scheduledMessages",
+});
+
+ScheduledMessage.belongsTo(WhatsAppSession, {
   foreignKey: "session_id",
   as: "session",
 });
@@ -83,4 +105,5 @@ module.exports = {
   Contact,
   Group,
   Statistic,
+  ScheduledMessage,
 };

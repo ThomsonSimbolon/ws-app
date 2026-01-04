@@ -44,6 +44,7 @@ const createTablesIfNotExist = async () => {
       "whatsapp_sessions",
       "messages",
       "contacts",
+      "scheduled_messages",
     ];
     const missingTables = requiredTables.filter(
       (table) => !existingTables.includes(table)

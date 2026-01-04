@@ -152,8 +152,16 @@ function SendMessageContent() {
           type: 'text',
         });
       } else {
+        let mediaType = 'document';
+        if (selectedFile.type.startsWith('image/')) {
+          mediaType = 'image';
+        } else if (selectedFile.type.startsWith('video/')) {
+          mediaType = 'video';
+        }
+
         const formData = new FormData();
-        formData.append('phone', phoneNumber);
+        formData.append('to', phoneNumber);
+        formData.append('mediaType', mediaType);
         formData.append('file', selectedFile!);
         if (caption.trim()) {
           formData.append('caption', caption.trim());

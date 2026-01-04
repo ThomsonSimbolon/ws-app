@@ -639,3 +639,157 @@ export async function getContacts(
     throw error;
   }
 }
+
+// ============================================
+// Scheduled Message Types & Functions
+// ============================================
+
+export interface ScheduleMessageRequest {
+  to: string;
+  message: string;
+  scheduleTime: string; // ISO 8601 format
+  timezone?: string;
+}
+
+export interface ScheduleMessageResponse {
+  scheduledMessageId: string;
+  scheduleTime: string;
+  timezone: string;
+  delaySeconds: number;
+}
+
+export interface MultiTargetScheduleResult {
+  phone: string;
+  success: boolean;
+  scheduledMessageId?: string;
+  error?: string;
+}
+
+/**
+ * Schedule a message to a single phone number
+ */
+export async function scheduleMessage(
+  deviceId: string,
+  data: ScheduleMessageRequest
+): Promise<ScheduleMessageResponse> {
+  try {
+    const response = await post<ScheduleMessageResponse>(
+      `/whatsapp-multi-device/devices/${deviceId}/schedule-message`,
+      data
+    );
+
+    if (!response.success || !response.data) {
+      throw {
+        message: response.message || "Failed to schedule message",
+      } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export interface ScheduledMessage {
+  id: string;
+  deviceId: string;
+  phoneNumber: string;
+  message: string;
+  scheduleTime: string;
+  status: "pending" | "sent" | "failed" | "cancelled";
+  timezone: string;
+  createdAt: string;
+  error?: string;
+}
+
+/**
+ * Get scheduled message history
+ */
+export async function getScheduledMessages(
+  deviceId: string
+): Promise<ScheduledMessage[]> {
+  try {
+    const response = await get<{ messages: ScheduledMessage[]; count: number }>(
+      `/whatsapp-multi-device/devices/${deviceId}/scheduled-messages`
+    );
+
+    if (!response.success || !response.data) {
+      throw {
+        message: response.message || "Failed to fetch scheduled messages",
+      } as ApiError;
+    }
+
+    return response.data.messages || [];
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Normalize phone number to Indonesian format (62xxxxxxxxx)
+ * Supports: +62, 62, 0 prefixes
+ */
+export function normalizePhoneNumber(phone: string): string | null {
+  if (!phone || typeof phone !== "string") {
+    return null;
+  }
+
+  let cleaned = phone.trim();
+
+  // Handle +62 format
+  if (cleaned.startsWith("+62")) {
+    cleaned = cleaned.substring(3);
+  } else if (cleaned.startsWith("62")) {
+    cleaned = cleaned.substring(2);
+  } else if (cleaned.startsWith("0")) {
+    cleaned = cleaned.substring(1);
+  }
+
+  // Remove all non-digit characters
+  cleaned = cleaned.replace(/\D/g, "");
+
+  // Validate: should be 8-13 digits after normalization
+  if (cleaned.length < 8 || cleaned.length > 13) {
+    return null;
+  }
+
+  return "62" + cleaned;
+}
+
+/**
+ * Parse multiple phone numbers from text input
+ * Returns { valid: string[], invalid: string[], duplicates: string[] }
+ */
+export function parsePhoneNumbers(input: string): {
+  valid: string[];
+  invalid: string[];
+  duplicates: string[];
+  normalized: Map<string, string>;
+} {
+  const lines = input
+    .split(/[\n,;]+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const valid: string[] = [];
+  const invalid: string[] = [];
+  const duplicates: string[] = [];
+  const normalized = new Map<string, string>();
+  const seen = new Set<string>();
+
+  for (const line of lines) {
+    const norm = normalizePhoneNumber(line);
+    if (!norm) {
+      invalid.push(line);
+    } else if (seen.has(norm)) {
+      duplicates.push(line);
+    } else {
+      seen.add(norm);
+      valid.push(line);
+      normalized.set(line, norm);
+    }
+  }
+
+  return { valid, invalid, duplicates, normalized };
+}
+
