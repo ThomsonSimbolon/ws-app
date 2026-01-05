@@ -1,0 +1,9 @@
+# ignore backend
+backend/sessions
+backend/logs
+backend/node_modules
+backend/.env
+
+# ignore frontend
+frontend/node_modules
+frontend/.env

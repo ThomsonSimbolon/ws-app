@@ -441,6 +441,12 @@ Client                     Express Server      WhatsAppService    Event System
 - ✅ **Global Statistics**: Statistik global sistem
 - ✅ **Role Management**: Manage user roles
 
+### Scheduled Messaging
+
+- ✅ **Schedule Text Messages**: Jadwalkan pengiriman pesan di waktu tertentu
+- ✅ **Schedule Management**: Monitor, cancel, dan track status pesan terjadwal
+- ✅ **Auto-Processing**: Background job runner untuk mengirim pesan sesuai jadwal
+
 ---
 
 ## 🛠 Teknologi
@@ -476,7 +482,16 @@ Client                     Express Server      WhatsAppService    Event System
 ### Development Tools
 
 - **nodemon** - Auto-reload saat development
-- **sequelize-cli** - Database migration tools
+### Frontend Stack
+
+- **Next.js** (v16.1.1) - React Framework (App Router)
+- **React** (v19.2.3) - UI Library
+- **TailwindCSS** (v4.0) - Utility-first CSS framework
+- **Redux Toolkit** - State Management
+- **Lucide React** - Icon System
+- **Axios** - HTTP Client
+
+---
 
 ---
 
@@ -559,7 +574,19 @@ ws-app/
 │   └── create-admin.js                 # Script untuk create admin user
 │
 ├── frontend/                           # Frontend React application
-│   └── ...
+│   ├── app/                        # Next.js Pages & Layouts (App Router)
+│   │   ├── admin/                  # Admin dashboard pages
+│   │   ├── auth/                   # Authentication pages
+│   │   ├── contacts/               # Contact management pages
+│   │   ├── dashboard/              # User dashboard pages
+│   │   └── ...
+│   ├── components/                 # Reusable React components
+│   │   ├── admin/                  # Admin-specific components
+│   │   ├── user/                   # User-specific components
+│   │   └── ui/                     # Shared UI components
+│   ├── lib/                        # Utilities & API services
+│   ├── store/                      # Redux store & slices
+│   └── public/                     # Static assets
 │
 └── README.md                           # This file
 ```
@@ -768,6 +795,25 @@ Tracking dan kalkulasi statistik:
 }
 ```
 
+#### `ScheduledMessage`
+
+```javascript
+{
+  id: INTEGER (Primary Key),
+  userId: INTEGER (Foreign Key -> User.id),
+  sessionId: INTEGER (Foreign Key -> WhatsAppSession.id),
+  scheduledMessageId: STRING (Unique),
+  targetNumber: STRING,
+  message: TEXT,
+  scheduleTime: DATETIME,
+  status: ENUM('pending', 'sent', 'failed', 'cancelled'),
+  timezone: STRING,
+  errorMessage: TEXT,
+  createdAt: DATETIME,
+  updatedAt: DATETIME
+}
+```
+
 ---
 
 ## 🗄️ Database Schema
@@ -859,6 +905,14 @@ Tracking dan kalkulasi statistik:
    - Satu device bisa punya banyak statistics (per hari)
    - Foreign Key: `statistics.device_id` → `whatsapp_sessions.deviceId`
 
+7. **User → ScheduledMessage** (1:N)
+   - Satu user bisa punya banyak scheduled messages
+   - Foreign Key: `scheduled_messages.user_id` → `users.id`
+
+8. **WhatsAppSession → ScheduledMessage** (1:N)
+   - Satu session bisa punya banyak scheduled messages
+   - Foreign Key: `scheduled_messages.session_id` → `whatsapp_sessions.id`
+
 ---
 
 ## 🚀 Instalasi
@@ -943,6 +997,23 @@ Tracking dan kalkulasi statistik:
    ```
 
 Server akan berjalan di `http://localhost:5000`
+
+### Frontend Setup
+
+1. **Install dependencies**
+
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+2. **Start Development Server**
+
+   ```bash
+   npm run dev
+   ```
+
+   Frontend akan berjalan di `http://localhost:3000`
 
 ---
 
