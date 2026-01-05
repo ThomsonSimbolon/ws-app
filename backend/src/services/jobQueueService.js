@@ -135,7 +135,137 @@ class JobQueueService {
     }
 
     logger.info(`🚫 Cancelled job ${jobId}`);
+    logger.info(`🚫 Cancelled job ${jobId}`);
     return true;
+  }
+
+  /**
+   * Pause a job
+   * @param {string} jobId - Job ID
+   * @returns {boolean} True if paused successfully
+   */
+  pauseJob(jobId) {
+    const job = this.jobs.get(jobId);
+    
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    if (job.status !== 'queued' && job.status !== 'processing') {
+      return false; // Can only pause queued or processing jobs
+    }
+
+    job.status = 'paused';
+    
+    // Worker loop will detect status change and stop
+    logger.info(`II Paused job ${jobId}`);
+    return true;
+  }
+
+  /**
+   * Resume a job
+   * @param {string} jobId - Job ID
+   * @returns {boolean} True if resumed successfully
+   */
+  resumeJob(jobId) {
+    const job = this.jobs.get(jobId);
+    
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    if (job.status !== 'paused') {
+      return false; // Can only resume paused jobs
+    }
+
+    job.status = 'queued'; // Re-queue it
+    logger.info(`▶️ Resuming job ${jobId}`);
+
+    // Restart processing (processJob handles resuming logic)
+    this.processJob(jobId).catch(error => {
+      logger.error(`❌ Error resuming job ${jobId}:`, error);
+    });
+
+    return true;
+  }
+
+  /**
+   * Retry a failed job (creates a new job with failed items)
+   * @param {string} jobId - Original Job ID
+   * @returns {string} New Job ID
+   */
+  retryJob(jobId) {
+    const oldJob = this.jobs.get(jobId);
+    
+    if (!oldJob) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    if (oldJob.status !== 'completed' && oldJob.status !== 'failed' && oldJob.status !== 'cancelled') {
+        throw new Error(`Job ${jobId} is not in a terminal state`);
+    }
+
+    // Identify failed items
+    let failedItems = [];
+    
+    if (oldJob.type === 'send-text') {
+        // Collect failed messages (from result.failed or identifying missing success indices)
+        // Check result.failed explicitly
+        if (oldJob.result && oldJob.result.failed) {
+            failedItems = oldJob.result.failed.map(f => ({
+                to: f.to,
+                message: f.message,
+                type: 'text' // Assuming text, but could be preserved
+            }));
+        } 
+        
+        // Also check if some items were never processed (cancellation/failure before completion)
+        const processedIndices = new Set([
+            ...(oldJob.result?.success?.map(s => s.index) || []),
+            ...(oldJob.result?.failed?.map(f => f.index) || [])
+        ]);
+        
+        oldJob.data.messages.forEach((msg, idx) => {
+            if (!processedIndices.has(idx)) {
+                failedItems.push(msg); // Add unprocessed
+            }
+        });
+
+    } else if (oldJob.type === 'send-media') {
+        // Similar logic for media
+        const processedIndices = new Set([
+            ...(oldJob.result?.success?.map(s => s.index) || []),
+            ...(oldJob.result?.failed?.map(f => f.index) || [])
+        ]);
+
+        oldJob.data.items.forEach((item, idx) => {
+             // For explicit failures
+             const failRecord = oldJob.result?.failed?.find(f => f.index === idx);
+             if (failRecord) {
+                 failedItems.push(item);
+             } else if (!processedIndices.has(idx)) {
+                 failedItems.push(item);
+             }
+        });
+    } else {
+        throw new Error(`Retry not supported for job type: ${oldJob.type}`);
+    }
+
+    if (failedItems.length === 0) {
+        throw new Error(`No failed or unprocessed items found to retry for job ${jobId}`);
+    }
+
+    // Create new job with failed items
+    const newData = { ...oldJob.data };
+    if (oldJob.type === 'send-text') {
+        newData.messages = failedItems;
+    } else {
+        newData.items = failedItems;
+    }
+
+    // Create and return new job
+    logger.info(`🔄 Retrying job ${jobId} with ${failedItems.length} items (New Job)`);
+    return this.createJob(oldJob.type, newData, oldJob.options);
   }
 
   /**
@@ -155,11 +285,14 @@ class JobQueueService {
     }
 
     job.status = 'processing';
-    job.startedAt = new Date();
+    if (!job.startedAt) {
+        job.startedAt = new Date();
+    }
 
-    // Store worker info for cancellation
+    // Store worker info for cancellation/pausing
     const worker = {
       cancelled: false,
+      paused: false,
     };
     this.workers.set(jobId, worker);
 
@@ -176,10 +309,12 @@ class JobQueueService {
           throw new Error(`Unknown job type: ${job.type}`);
       }
 
-      if (!worker.cancelled) {
+      if (!worker.cancelled && !worker.paused && job.status !== 'paused') {
         job.status = 'completed';
         job.completedAt = new Date();
         logger.info(`✅ Job ${jobId} completed successfully`);
+      } else if (job.status === 'paused') {
+          logger.info(`II Job ${jobId} paused`);
       }
     } catch (error) {
       if (!worker.cancelled) {
@@ -205,17 +340,34 @@ class JobQueueService {
     }
 
     job.progress.total = messages.length;
-    job.result = {
-      success: [],
-      failed: [],
-    };
+    
+    // Initialize results if not already present (resume support)
+    if (!job.result) {
+        job.result = {
+          success: [],
+          failed: [],
+        };
+    }
 
     for (let i = 0; i < messages.length; i++) {
-      // Check if job was cancelled
+      // Check if job was cancelled or paused
       if (worker.cancelled) {
         logger.info(`🚫 Job ${job.id} cancelled, stopping at message ${i + 1}`);
         job.status = 'cancelled';
         break;
+      }
+      
+      if (worker.paused) { // Check worker.paused flag
+          job.status = 'paused'; // Update job status
+          logger.info(`II Job ${job.id} paused, stopping at message ${i + 1}`);
+          break;
+      }
+
+      // Check if already processed (for resume)
+      const isProcessed = job.result.success.some(s => s.index === i) || job.result.failed.some(f => f.index === i);
+      if (isProcessed) {
+          job.progress.completed++; // Increment completed for already processed items
+          continue;
       }
 
       const message = messages[i];
@@ -235,7 +387,7 @@ class JobQueueService {
         logger.info(`✅ Job ${job.id}: Sent message ${i + 1}/${messages.length} to ${message.to}`);
 
         // Delay before next message (except for last message)
-        if (i < messages.length - 1 && !worker.cancelled) {
+        if (i < messages.length - 1 && !worker.cancelled && !worker.paused) {
           await this.delay(delay);
         }
       } catch (error) {
@@ -271,10 +423,14 @@ class JobQueueService {
     }
 
     job.progress.total = items.length;
-    job.result = {
-      success: [],
-      failed: [],
-    };
+    
+    // Initialize results if not present (resume support)
+    if (!job.result) {
+        job.result = {
+            success: [],
+            failed: [],
+        };
+    }
 
     for (let i = 0; i < items.length; i++) {
       // Check if job was cancelled
@@ -282,6 +438,18 @@ class JobQueueService {
         logger.info(`🚫 Job ${job.id} cancelled, stopping at item ${i + 1}`);
         job.status = 'cancelled';
         break;
+      }
+
+      if (job.status === 'paused') {
+          worker.paused = true;
+          logger.info(`II Job ${job.id} paused, stopping at item ${i + 1}`);
+          break;
+      }
+
+      // Check if already processed (for resume)
+      const isProcessed = job.result.success.some(s => s.index === i) || job.result.failed.some(f => f.index === i);
+      if (isProcessed) {
+          continue;
       }
 
       const item = items[i];
@@ -393,7 +561,7 @@ class JobQueueService {
         logger.info(`✅ Job ${job.id}: Sent media ${i + 1}/${items.length} to ${target}`);
 
         // Delay before next message (except for last message)
-        if (i < items.length - 1 && !worker.cancelled) {
+        if (i < items.length - 1 && !worker.cancelled && job.status !== 'paused') {
           await this.delay(delay);
         }
       } catch (error) {

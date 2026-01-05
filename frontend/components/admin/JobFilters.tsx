@@ -3,9 +3,9 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 
 interface JobFiltersProps {
-  status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | '';
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'paused' | '';
   type: 'send-text' | 'send-media' | '';
-  onStatusChange: (value: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | '') => void;
+  onStatusChange: (value: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'paused' | '') => void;
   onTypeChange: (value: 'send-text' | 'send-media' | '') => void;
   onReset: () => void;
 }
@@ -32,6 +32,7 @@ export default function JobFilters({
             <option value="">All Status</option>
             <option value="queued">Queued</option>
             <option value="processing">Processing</option>
+            <option value="paused">Paused</option>
             <option value="completed">Completed</option>
             <option value="failed">Failed</option>
             <option value="cancelled">Cancelled</option>

@@ -9,6 +9,7 @@ import { useAppSelector, useAppDispatch } from '@/hooks/useAppDispatch';
 import { fetchUserDevices, fetchConnectedDevices } from '@/store/slices/userDashboardSlice';
 import { getDailyChatList, getChatHistory, DailyChat, ChatMessage } from '@/lib/userService';
 import { ApiError } from '@/lib/api';
+import MessageBubble from '@/components/chat-history/MessageBubble';
 
 export default function ChatHistoryPage() {
   const router = useRouter();
@@ -217,29 +218,12 @@ export default function ChatHistoryPage() {
               ) : (
                 <div className="space-y-3 max-h-[600px] overflow-y-auto">
                   {messages.map((msg, index) => (
-                    <div
-                      key={index}
-                      className={`flex ${
-                        msg.direction === 'outgoing' ? 'justify-end' : 'justify-start'
-                      }`}
-                    >
-                      <div
-                        className={`max-w-[70%] rounded-lg p-3 ${
-                          msg.direction === 'outgoing'
-                            ? 'bg-primary text-white'
-                            : 'bg-elevated text-text-primary'
-                        }`}
-                      >
-                        <p className="text-sm">{msg.message}</p>
-                        <p
-                          className={`text-xs mt-1 ${
-                            msg.direction === 'outgoing' ? 'text-white/70' : 'text-text-muted'
-                          }`}
-                        >
-                          {new Date(msg.timestamp).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
+                    <MessageBubble 
+                      key={msg.id || index} 
+                      message={msg} 
+                      deviceId={selectedDeviceId}
+                      onRetrySuccess={() => loadMessages()} // Reload to check if new message appears
+                    />
                   ))}
                 </div>
               )}

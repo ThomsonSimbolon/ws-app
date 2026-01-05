@@ -9,9 +9,20 @@ interface JobTableProps {
   isLoading?: boolean;
   onViewDetail?: (job: Job) => void;
   onCancel?: (jobId: string) => void;
+  onPause?: (jobId: string) => void;
+  onResume?: (jobId: string) => void;
+  onRetry?: (jobId: string) => void;
 }
 
-export default function JobTable({ jobs, isLoading = false, onViewDetail, onCancel }: JobTableProps) {
+export default function JobTable({ 
+  jobs, 
+  isLoading = false, 
+  onViewDetail, 
+  onCancel,
+  onPause,
+  onResume,
+  onRetry 
+}: JobTableProps) {
   const formatRelativeTime = (dateString?: string) => {
     if (!dateString) return '-';
     const date = new Date(dateString);
@@ -30,6 +41,8 @@ export default function JobTable({ jobs, isLoading = false, onViewDetail, onCanc
       case 'queued':
         return 'info';
       case 'processing':
+        return 'warning';
+      case 'paused':
         return 'warning';
       case 'completed':
         return 'success';
@@ -167,15 +180,68 @@ export default function JobTable({ jobs, isLoading = false, onViewDetail, onCanc
                         Details
                       </Button>
                     )}
-                    {onCancel && (job.status === 'queued' || job.status === 'processing') && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onCancel(job.id)}
-                        className="text-danger hover:text-danger hover:bg-danger-soft"
-                      >
-                        Cancel
-                      </Button>
+                    
+                    {/* Control Buttons */}
+                    {(job.status === 'queued' || job.status === 'processing') && (
+                      <>
+                        {onPause && (
+                          <Button 
+                            variant="secondary" 
+                            size="sm" 
+                            onClick={() => onPause(job.id)}
+                          >
+                            Pause
+                          </Button>
+                        )}
+                        {onCancel && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onCancel(job.id)}
+                            className="text-danger hover:text-danger hover:bg-danger-soft"
+                          >
+                            Cancel
+                          </Button>
+                        )}
+                      </>
+                    )}
+
+                    {job.status === 'paused' && (
+                      <>
+                        {onResume && (
+                          <Button 
+                            variant="success" 
+                            size="sm" 
+                            onClick={() => onResume(job.id)}
+                          >
+                            Resume
+                          </Button>
+                        )}
+                        {onCancel && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onCancel(job.id)}
+                            className="text-danger hover:text-danger hover:bg-danger-soft"
+                          >
+                            Cancel
+                          </Button>
+                        )}
+                      </>
+                    )}
+
+                    {(job.status === 'failed' || job.status === 'cancelled' || job.status === 'completed') && job.progress.failed > 0 && (
+                      <>
+                        {onRetry && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => onRetry(job.id)}
+                          >
+                            Retry Failed
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </td>

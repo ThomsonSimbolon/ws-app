@@ -8,10 +8,19 @@ interface UserTableProps {
   users: User[];
   isLoading?: boolean;
   onDelete?: (userId: number) => void;
+  onToggleStatus?: (userId: number, currentStatus: boolean) => void;
+  onResetPassword?: (userId: number, username: string) => void;
   currentUserId?: number;
 }
 
-export default function UserTable({ users, isLoading = false, onDelete, currentUserId }: UserTableProps) {
+export default function UserTable({ 
+  users, 
+  isLoading = false, 
+  onDelete, 
+  onToggleStatus, 
+  onResetPassword, 
+  currentUserId 
+}: UserTableProps) {
   if (isLoading) {
     return (
       <div className="space-y-3">
@@ -96,6 +105,24 @@ export default function UserTable({ users, isLoading = false, onDelete, currentU
                       Edit
                     </Button>
                   </Link>
+                  {onToggleStatus && user.id !== currentUserId && (
+                    <Button
+                      variant={user.isActive ? 'warning' : 'success'}
+                      size="sm"
+                      onClick={() => onToggleStatus(user.id, user.isActive)}
+                    >
+                      {user.isActive ? 'Lock' : 'Unlock'}
+                    </Button>
+                  )}
+                  {onResetPassword && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => onResetPassword(user.id, user.username)}
+                    >
+                      Reset Pwd
+                    </Button>
+                  )}
                   {onDelete && user.id !== currentUserId && (
                     <Button
                       variant="ghost"

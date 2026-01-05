@@ -13,7 +13,7 @@ import React from 'react';
  * - All colors via Tailwind + CSS variables
  */
 
-type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'warning';
+type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'warning' | 'success';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 interface ButtonProps {
@@ -46,6 +46,7 @@ export default function Button({
     ghost: 'bg-transparent text-text-secondary hover:bg-elevated hover:text-text-primary active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed',
     danger: 'bg-danger text-white hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed',
     warning: 'bg-yellow-500 text-white hover:bg-yellow-600 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed',
+    success: 'bg-success text-white hover:bg-success-hover active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed',
   };
   
   // Size styles

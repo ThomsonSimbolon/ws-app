@@ -726,6 +726,29 @@ export async function getScheduledMessages(
 }
 
 /**
+ * Cancel a scheduled message
+ */
+export async function cancelScheduledMessage(
+  deviceId: string,
+  messageId: string
+): Promise<void> {
+  try {
+    const response = await post<{ message?: string; success: boolean }>(
+      `/whatsapp-multi-device/devices/${deviceId}/scheduled-messages/${messageId}/cancel`,
+      {}
+    );
+
+    if (!response.success) {
+      throw {
+        message: response.message || "Failed to cancel scheduled message",
+      } as ApiError;
+    }
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
  * Normalize phone number to Indonesian format (62xxxxxxxxx)
  * Supports: +62, 62, 0 prefixes
  */

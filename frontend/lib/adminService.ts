@@ -253,7 +253,7 @@ export interface Contact {
 export interface Job {
   id: string;
   type: "send-text" | "send-media";
-  status: "queued" | "processing" | "completed" | "failed" | "cancelled";
+  status: "queued" | "processing" | "completed" | "failed" | "cancelled" | "paused";
   data: {
     deviceId?: string;
     messages?: Array<{ to: string; message: string }>;
@@ -302,7 +302,7 @@ export interface GetContactsParams {
 }
 
 export interface GetJobsParams {
-  status?: "queued" | "processing" | "completed" | "failed" | "cancelled" | "";
+  status?: "queued" | "processing" | "completed" | "failed" | "cancelled" | "paused" | "";
   type?: "send-text" | "send-media" | "";
   limit?: number;
 }
@@ -464,7 +464,7 @@ export async function createDevice(
 export async function disconnectDevice(deviceId: string): Promise<void> {
   try {
     const response = await del<{ message?: string }>(
-      `/whatsapp-multi-device/devices/${deviceId}/disconnect`
+      `/admin/devices/${deviceId}/disconnect`
     );
 
     if (!response.success) {
@@ -483,7 +483,7 @@ export async function disconnectDevice(deviceId: string): Promise<void> {
 export async function deleteDevice(deviceId: string): Promise<void> {
   try {
     const response = await del<{ message?: string }>(
-      `/whatsapp-multi-device/devices/${deviceId}`
+      `/admin/devices/${deviceId}`
     );
 
     if (!response.success) {
@@ -764,6 +764,139 @@ export async function cancelJob(jobId: string): Promise<void> {
         message: response.message || "Failed to cancel job",
       } as ApiError;
     }
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Pause job
+ */
+export async function pauseJob(jobId: string): Promise<void> {
+  try {
+    const response = await post<{ message?: string }>(`/admin/jobs/${jobId}/pause`);
+
+    if (!response.success) {
+      throw {
+        message: response.message || "Failed to pause job",
+      } as ApiError;
+    }
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Resume job
+ */
+export async function resumeJob(jobId: string): Promise<void> {
+  try {
+    const response = await post<{ message?: string }>(`/admin/jobs/${jobId}/resume`);
+
+    if (!response.success) {
+      throw {
+        message: response.message || "Failed to resume job",
+      } as ApiError;
+    }
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Retry job
+ */
+export async function retryJob(jobId: string): Promise<{ jobId: string }> {
+  try {
+    const response = await post<{ message?: string; data?: { jobId: string } }>(
+      `/admin/jobs/${jobId}/retry`
+    );
+
+    if (!response.success) {
+      throw {
+        message: response.message || "Failed to retry job",
+      } as ApiError;
+    }
+
+    return response.data?.data || { jobId: "" };
+  } catch (error) {
+    throw error;
+  }
+}
+
+// --- Audit Logs ---
+
+export interface AdminActionLog {
+  id: number;
+  adminId: number;
+  action: string;
+  targetType: string;
+  targetId?: string;
+  details?: any;
+  ipAddress?: string;
+  userAgent?: string;
+  createdAt: string;
+  admin?: {
+    id: number;
+    username: string;
+    email: string;
+    fullName?: string;
+  };
+}
+
+export interface GetAuditLogsParams {
+  page?: number;
+  limit?: number;
+  adminId?: number | "";
+  action?: string;
+  targetType?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface AuditLogsResponse {
+  logs: AdminActionLog[];
+  pagination: PaginationInfo;
+}
+
+/**
+ * Get audit logs with pagination and filters
+ */
+export async function getAuditLogs(
+  params: GetAuditLogsParams = {}
+): Promise<AuditLogsResponse> {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      adminId,
+      action,
+      targetType,
+      startDate,
+      endDate,
+    } = params;
+
+    // Build query string
+    const queryParams = new URLSearchParams();
+    queryParams.append("page", page.toString());
+    queryParams.append("limit", limit.toString());
+    if (adminId) queryParams.append("adminId", adminId.toString());
+    if (action) queryParams.append("action", action);
+    if (targetType) queryParams.append("targetType", targetType);
+    if (startDate) queryParams.append("startDate", startDate);
+    if (endDate) queryParams.append("endDate", endDate);
+
+    const response = await get<AuditLogsResponse>(
+      `/admin/logs?${queryParams.toString()}`
+    );
+
+    if (!response.success || !response.data) {
+      throw {
+        message: response.message || "Failed to fetch audit logs",
+      } as ApiError;
+    }
+
+    return response.data;
   } catch (error) {
     throw error;
   }

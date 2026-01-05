@@ -1,7 +1,5 @@
-'use client';
-
 import React, { useEffect, useState } from 'react';
-import { ScheduledMessage, getScheduledMessages } from '@/lib/userService';
+import { ScheduledMessage, getScheduledMessages, cancelScheduledMessage } from '@/lib/userService';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 
@@ -17,6 +15,7 @@ export default function ScheduledMessageHistory({
   const [messages, setMessages] = useState<ScheduledMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const fetchHistory = async () => {
     if (!deviceId) return;
@@ -36,6 +35,22 @@ export default function ScheduledMessageHistory({
   useEffect(() => {
     fetchHistory();
   }, [deviceId, refreshTrigger]);
+
+  // Handle Cancel
+  const handleCancel = async (messageId: string) => {
+    if (!confirm('Are you sure you want to cancel this scheduled message?')) return;
+    
+    setCancellingId(messageId);
+    try {
+      await cancelScheduledMessage(deviceId, messageId);
+      // Refresh list
+      fetchHistory();
+    } catch (err: any) {
+      alert(err.message || 'Failed to cancel message');
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     const styles = {
@@ -61,6 +76,22 @@ export default function ScheduledMessageHistory({
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  const getCountdown = (dateStr: string) => {
+    const target = new Date(dateStr).getTime();
+    const now = new Date().getTime();
+    const diff = target - now;
+
+    if (diff <= 0) return 'Due now';
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
   };
 
   if (!deviceId) {
@@ -97,14 +128,19 @@ export default function ScheduledMessageHistory({
                 <th className="p-3">Target</th>
                 <th className="p-3">Message</th>
                 <th className="p-3">Status</th>
-                <th className="p-3 rounded-tr-lg">Created</th>
+                <th className="p-3 rounded-tr-lg">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {messages.map((msg) => (
                 <tr key={msg.id} className="hover:bg-elevated/50 transition-colors">
                   <td className="p-3 align-top whitespace-nowrap">
-                    {formatDate(msg.scheduleTime)}
+                    <div>{formatDate(msg.scheduleTime)}</div>
+                    {msg.status === 'pending' && (
+                      <div className="text-xs text-primary mt-1 font-medium">
+                        in {getCountdown(msg.scheduleTime)}
+                      </div>
+                    )}
                   </td>
                   <td className="p-3 align-top whitespace-nowrap">
                     {msg.phoneNumber}
@@ -122,8 +158,18 @@ export default function ScheduledMessageHistory({
                       )}
                     </div>
                   </td>
-                  <td className="p-3 align-top whitespace-nowrap text-text-muted">
-                    {formatDate(msg.createdAt)}
+                  <td className="p-3 align-top">
+                     {msg.status === 'pending' && (
+                       <Button 
+                         variant="ghost" 
+                         size="sm" 
+                         className="text-danger hover:bg-danger-soft h-8 px-2"
+                         onClick={() => handleCancel(msg.id)}
+                         disabled={cancellingId === msg.id}
+                       >
+                         {cancellingId === msg.id ? '...' : 'Cancel'}
+                       </Button>
+                     )}
                   </td>
                 </tr>
               ))}

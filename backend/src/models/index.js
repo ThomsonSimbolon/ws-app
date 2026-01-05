@@ -1,4 +1,4 @@
-const { sequelize } = require("../config/database");
+
 
 // Import models
 const User = require("./User");
@@ -8,6 +8,8 @@ const Contact = require("./Contact");
 const Group = require("./Group");
 const Statistic = require("./Statistic");
 const ScheduledMessage = require("./ScheduledMessage");
+const AdminActionLog = require("./AdminActionLog");
+const { sequelize } = require("../config/database");
 
 // Define associations
 User.hasMany(WhatsAppSession, {
@@ -97,6 +99,17 @@ Statistic.belongsTo(WhatsAppSession, {
   as: "device",
 });
 
+// Admin Action Log Associations
+User.hasMany(AdminActionLog, {
+  foreignKey: "adminId",
+  as: "adminActions",
+});
+
+AdminActionLog.belongsTo(User, {
+  foreignKey: "adminId",
+  as: "admin",
+});
+
 module.exports = {
   sequelize,
   User,
@@ -106,4 +119,5 @@ module.exports = {
   Group,
   Statistic,
   ScheduledMessage,
+  AdminActionLog,
 };

@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const adminController = require("../controllers/adminController");
+const auditController = require("../controllers/auditController");
 const authenticateToken = require("../middleware/auth");
 const { requireAdmin } = require("../middleware/authorize");
 
@@ -18,6 +19,8 @@ router.delete("/users/:userId", adminController.deleteUser);
 
 // Device Management Routes
 router.get("/devices", adminController.listDevices);
+router.post("/devices/:deviceId/disconnect", adminController.disconnectDevice);
+router.delete("/devices/:deviceId", adminController.deleteDevice);
 
 // Message Management Routes
 router.get("/messages", adminController.listMessages);
@@ -32,9 +35,15 @@ router.get("/contacts", adminController.listContacts);
 router.get("/jobs", adminController.listJobs);
 router.get("/jobs/:jobId", adminController.getJobDetails);
 router.post("/jobs/:jobId/cancel", adminController.cancelJob);
+router.post("/jobs/:jobId/pause", adminController.pauseJob);
+router.post("/jobs/:jobId/resume", adminController.resumeJob);
+router.post("/jobs/:jobId/retry", adminController.retryJob);
 
 // Statistics Routes
 router.get("/stats", adminController.getStats);
+
+// Audit Log Routes
+router.get("/logs", auditController.listLogs);
 
 module.exports = router;
 

@@ -1,6 +1,9 @@
 const { User, WhatsAppSession, Message, Group, Contact } = require("../models");
 const { Op } = require("sequelize");
 const logger = require("../utils/logger");
+const { logAction } = require("./auditController");
+const whatsappService = require("../services/whatsappService");
+
 
 /**
  * List all users (Admin only)
@@ -579,6 +582,18 @@ const createUser = async (req, res) => {
 
     logger.info(`Admin ${req.user.id} created new user: ${user.email} (${user.role})`);
 
+    await logAction(
+      {
+        adminId: req.user.id,
+        action: "create_user",
+        targetType: "user",
+        targetId: user.id,
+        details: { email: user.email, role: user.role },
+      },
+      req
+    );
+
+
     res.status(201).json({
       success: true,
       message: "User created successfully",
@@ -675,6 +690,18 @@ const updateUser = async (req, res) => {
 
     logger.info(`Admin ${req.user.id} updated user: ${user.email}`);
 
+    await logAction(
+      {
+        adminId: req.user.id,
+        action: "update_user",
+        targetType: "user",
+        targetId: user.id,
+        details: updateData,
+      },
+      req
+    );
+
+
     res.json({
       success: true,
       message: "User updated successfully",
@@ -729,10 +756,21 @@ const deleteUser = async (req, res) => {
       });
     }
 
-    // Delete user
     await user.destroy();
 
     logger.info(`Admin ${req.user.id} deleted user: ${user.email}`);
+
+    await logAction(
+      {
+        adminId: req.user.id,
+        action: "delete_user",
+        targetType: "user",
+        targetId: userId,
+        details: { email: user.email },
+      },
+      req
+    );
+
 
     res.json({
       success: true,
@@ -1135,5 +1173,252 @@ module.exports = {
   listJobs,
   getJobDetails,
   cancelJob,
+};
+
+/**
+ * Disconnect device (Admin only)
+ * POST /api/admin/devices/:deviceId/disconnect
+ */
+const disconnectDevice = async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+
+    // Find session
+    const session = await WhatsAppSession.findOne({ where: { deviceId } });
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: "Device not found",
+      });
+    }
+
+    // Disconnect via WhatsApp Service
+    await whatsappService.disconnectSession(deviceId);
+
+    // Initial update to status
+    await session.update({ status: "disconnected" });
+
+    logger.info(`Admin ${req.user.id} disconnected device: ${deviceId}`);
+
+    await logAction(
+      {
+        adminId: req.user.id,
+        action: "disconnect_device",
+        targetType: "device",
+        targetId: deviceId,
+        details: { deviceName: session.deviceName },
+      },
+      req
+    );
+
+    res.json({
+      success: true,
+      message: "Device disconnected successfully",
+    });
+  } catch (error) {
+    logger.error("Admin disconnect device error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to disconnect device",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/**
+ * Delete device (Admin only)
+ * DELETE /api/admin/devices/:deviceId
+ */
+const deleteDevice = async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+
+    // Find session
+    const session = await WhatsAppSession.findOne({ where: { deviceId } });
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: "Device not found",
+      });
+    }
+
+    // Delete session via WhatsApp Service
+    await whatsappService.deleteSession(deviceId);
+
+    // Delete from DB (might be handled by service, but ensuring here)
+    await session.destroy();
+
+    logger.info(`Admin ${req.user.id} deleted device: ${deviceId}`);
+
+    await logAction(
+      {
+        adminId: req.user.id,
+        action: "delete_device",
+        targetType: "device",
+        targetId: deviceId,
+        details: { deviceName: session.deviceName, phoneNumber: session.phoneNumber },
+      },
+      req
+    );
+
+    res.json({
+      success: true,
+      message: "Device deleted successfully",
+    });
+  } catch (error) {
+    logger.error("Admin delete device error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete device",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/**
+ * Pause job (Admin only)
+ * POST /api/admin/jobs/:jobId/pause
+ */
+const pauseJob = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const jobQueueService = require("../services/jobQueueService");
+
+    const paused = jobQueueService.pauseJob(jobId);
+
+    if (!paused) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to pause job",
+      });
+    }
+
+    logger.info(`Admin ${req.user.id} paused job: ${jobId}`);
+    
+    await logAction(
+      {
+        adminId: req.user.id,
+        action: "pause_job",
+        targetType: "job",
+        targetId: jobId,
+      },
+      req
+    );
+
+    res.json({
+      success: true,
+      message: "Job paused successfully",
+    });
+  } catch (error) {
+    logger.error("Admin pause job error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to pause job",
+    });
+  }
+};
+
+/**
+ * Resume job (Admin only)
+ * POST /api/admin/jobs/:jobId/resume
+ */
+const resumeJob = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const jobQueueService = require("../services/jobQueueService");
+
+    const resumed = jobQueueService.resumeJob(jobId);
+
+    if (!resumed) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to resume job",
+      });
+    }
+
+    logger.info(`Admin ${req.user.id} resumed job: ${jobId}`);
+
+    await logAction(
+      {
+        adminId: req.user.id,
+        action: "resume_job",
+        targetType: "job",
+        targetId: jobId,
+      },
+      req
+    );
+
+    res.json({
+      success: true,
+      message: "Job resumed successfully",
+    });
+  } catch (error) {
+    logger.error("Admin resume job error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to resume job",
+    });
+  }
+};
+
+/**
+ * Retry job (Admin only)
+ * POST /api/admin/jobs/:jobId/retry
+ */
+const retryJob = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const jobQueueService = require("../services/jobQueueService");
+
+    const newJobId = jobQueueService.retryJob(jobId);
+
+    logger.info(`Admin ${req.user.id} retried job: ${jobId} -> ${newJobId}`);
+
+    await logAction(
+      {
+        adminId: req.user.id,
+        action: "retry_job",
+        targetType: "job",
+        targetId: jobId,
+        details: { newJobId },
+      },
+      req
+    );
+
+    res.json({
+      success: true,
+      message: "Job retry started successfully",
+      data: {
+        jobId: newJobId,
+      },
+    });
+  } catch (error) {
+    logger.error("Admin retry job error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to retry job",
+    });
+  }
+};
+
+module.exports = {
+  listUsers,
+  getUserDetails,
+  createUser,
+  updateUser,
+  deleteUser,
+  listDevices,
+  disconnectDevice,
+  deleteDevice,
+  listMessages,
+  getStats,
+  listGroups,
+  listContacts,
+  listJobs,
+  getJobDetails,
+  cancelJob,
+  pauseJob,
+  resumeJob,
+  retryJob,
 };
 
