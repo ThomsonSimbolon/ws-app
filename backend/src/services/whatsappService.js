@@ -2309,6 +2309,64 @@ class WhatsAppService {
     }
   }
 
+  /**
+   * Broadcast SSE update to all connected users
+   * Used primarily for admin-wide notifications like job progress
+   * @param {Object} data - Data to broadcast
+   */
+  broadcastToAll(data) {
+    const message = `data: ${JSON.stringify(data)}\n\n`;
+    let totalConnections = 0;
+    let successCount = 0;
+
+    for (const [userId, connections] of this.sseConnections.entries()) {
+      if (connections && connections.size > 0) {
+        connections.forEach((res) => {
+          try {
+            res.write(message);
+            successCount++;
+          } catch (error) {
+            logger.error(`❌ SSE broadcast write error for user ${userId}:`, error);
+            connections.delete(res);
+          }
+          totalConnections++;
+        });
+      }
+    }
+
+    if (totalConnections > 0) {
+      logger.debug(
+        `📡 SSE broadcast sent to ${successCount}/${totalConnections} connections (type: ${data.type})`
+      );
+    }
+  }
+
+  /**
+   * Broadcast job progress update
+   * This is called by jobQueueService to notify all admins of job status changes
+   * @param {Object} job - Job object with id, status, progress
+   */
+  broadcastJobProgress(job) {
+    const data = {
+      type: "job-progress",
+      data: {
+        jobId: job.id,
+        status: job.status,
+        progress: {
+          total: job.progress?.total || 0,
+          completed: job.progress?.completed || 0,
+          failed: job.progress?.failed || 0,
+        },
+        startedAt: job.startedAt,
+        completedAt: job.completedAt,
+        error: job.error || null,
+      },
+      timestamp: new Date().toISOString(),
+    };
+
+    this.broadcastToAll(data);
+  }
+
   removeSessionFiles(userId) {
     try {
       const sessionDir = path.join(process.cwd(), "sessions", `user_${userId}`);

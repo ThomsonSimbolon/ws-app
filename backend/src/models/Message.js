@@ -20,12 +20,14 @@ const Message = sequelize.define(
     },
     sessionId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true, // Must allow NULL for ON DELETE SET NULL
       field: "session_id",
       references: {
         model: "whatsapp_sessions",
         key: "id",
       },
+      onDelete: "SET NULL",
+      onUpdate: "CASCADE",
     },
     messageId: {
       type: DataTypes.STRING(100),

@@ -17,6 +17,9 @@ Backend service untuk WhatsApp Business dengan dukungan multi-device menggunakan
 - [Konfigurasi](#konfigurasi)
 - [Database Migration](#database-migration)
 - [Menjalankan Server](#menjalankan-server)
+
+- [Database Migration](#database-migration)
+- [Menjalankan Server](#menjalankan-server)
 - [API Documentation](#api-documentation)
 - [Role-Based Access Control](#role-based-access-control)
   - [Role & Permission Matrix](#role--permission-matrix)
@@ -40,6 +43,10 @@ Backend service untuk WhatsApp Business dengan dukungan multi-device menggunakan
    - **Lock/Unlock Account**: Admin dapat mengunci/membuka akses user.
    - **Reset Password**: Admin dapat mereset password user.
    - **Audit Logging**: Sistem mencatat setiap aksi krusial admin (Create/Update/Delete) untuk keamanan dan tracebility.
+
+4.  **Database Auto Schema Update**
+
+    - Kemampuan untuk melakukan update struktur tabel database secara otomatis tanpa migrasi manual, dikontrol via `.env` (`AUTO_UPDATE_SCHEMA`).
 
 2. **Advanced Job Control**
 
@@ -598,6 +605,7 @@ ws-app/
 │   ├── nodemon.json                    # Nodemon configuration
 │   ├── package.json
 │   ├── .env                            # Environment variables (not in git)
+│   ├── .env.example                    # Example environment variables
 │   └── create-admin.js                 # Script untuk create admin user
 │
 ├── frontend/                           # Frontend React application
@@ -1127,6 +1135,17 @@ Dapat dikonfigurasi di `src/app.js`.
 Jika `AUTO_CREATE_TABLES=true` di `.env`, server akan otomatis membuat tabel yang belum ada saat startup. Fitur ini berguna untuk development, tapi **tidak direkomendasikan untuk production**.
 
 Untuk production, set `AUTO_CREATE_TABLES=false` dan gunakan migrations.
+
+### Auto Schema Update
+
+Anda dapat mengaktifkan update schema otomatis (seperti menambah kolom baru tanpa file migrasi manual) dengan mengatur environment variable:
+
+```env
+# backend/.env
+AUTO_UPDATE_SCHEMA=true
+```
+
+> **Catatan**: Fitur ini menggunakan `sequelize.sync({ alter: true })`. Gunakan dengan hati-hati di production karena berpotensi mengubah struktur tabel secara otomatis. Untuk production, disarankan menggunakan migration manual (`AUTO_UPDATE_SCHEMA=false`).
 
 ---
 

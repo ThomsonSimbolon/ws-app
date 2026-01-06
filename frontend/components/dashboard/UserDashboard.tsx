@@ -7,6 +7,7 @@ import DeviceCard from '@/components/user/DeviceCard';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import SkeletonCard from '@/components/ui/SkeletonCard';
+import UsageInsights from '@/components/dashboard/UsageInsights';
 import { useAppSelector, useAppDispatch } from '@/hooks/useAppDispatch';
 import { fetchUserDashboardData } from '@/store/slices/userDashboardSlice';
 
@@ -200,6 +201,9 @@ export default function UserDashboard() {
           )}
         </Card>
       )}
+
+      {/* Usage Insights */}
+      <UsageInsights />
     </div>
   );
 }

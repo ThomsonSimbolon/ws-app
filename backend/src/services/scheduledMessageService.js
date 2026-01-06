@@ -238,6 +238,117 @@ class ScheduledMessageService {
       throw error;
     }
   }
+
+  /**
+   * List all scheduled messages for a user (across all devices)
+   * @param {number} userId - User ID from JWT
+   * @param {object} options - Filter options
+   * @param {string} options.status - Filter by status (pending, sent, failed, cancelled)
+   * @param {string} options.search - Search in phone number or message content
+   * @param {number} options.limit - Max number of results (default 50)
+   * @param {number} options.offset - Pagination offset (default 0)
+   */
+  async listScheduledMessagesForUser(userId, options = {}) {
+    try {
+      const { status, search, limit = 50, offset = 0 } = options;
+      
+      const whereClause = { userId };
+      
+      // Filter by status if provided
+      if (status && ["pending", "sent", "failed", "cancelled"].includes(status)) {
+        whereClause.status = status;
+      }
+      
+      // Search filter
+      if (search) {
+        whereClause[Op.or] = [
+          { targetNumber: { [Op.like]: `%${search}%` } },
+          { message: { [Op.like]: `%${search}%` } }
+        ];
+      }
+
+      const { rows: messages, count: total } = await ScheduledMessage.findAndCountAll({
+        where: whereClause,
+        include: [
+          {
+            model: WhatsAppSession,
+            as: "session",
+            attributes: ["deviceId", "deviceName"],
+          }
+        ],
+        order: [["scheduleTime", "DESC"]], // Newest first
+        limit: Math.min(limit, 100), // Max 100
+        offset: offset
+      });
+      
+      return {
+        messages: messages.map(msg => ({
+          id: msg.scheduledMessageId,
+          deviceId: msg.session?.deviceId || null,
+          deviceName: msg.session?.deviceName || null,
+          phoneNumber: msg.targetNumber,
+          message: msg.message,
+          scheduleTime: msg.scheduleTime,
+          status: msg.status,
+          timezone: msg.timezone,
+          createdAt: msg.createdAt,
+          error: msg.errorMessage
+        })),
+        total,
+        limit: Math.min(limit, 100),
+        offset
+      };
+    } catch (error) {
+      logger.error("Error listing scheduled messages for user:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Cancel a scheduled message with ownership validation
+   * @param {string} scheduledMessageId - The message ID to cancel
+   * @param {number} userId - User ID for ownership validation
+   * @returns {object} Result with success status and message
+   */
+  async cancelScheduledMessageWithOwnership(scheduledMessageId, userId) {
+    try {
+      // Find in DB with ownership check
+      const msg = await ScheduledMessage.findOne({ 
+        where: { 
+          scheduledMessageId,
+          userId // Ownership check
+        } 
+      });
+      
+      if (!msg) {
+        return { success: false, error: "Message not found or access denied" };
+      }
+
+      // Can only cancel pending messages
+      if (msg.status !== "pending") {
+        return { 
+          success: false, 
+          error: `Cannot cancel message with status '${msg.status}'. Only pending messages can be cancelled.` 
+        };
+      }
+
+      // Clear timeout if active
+      if (this.activeTimeouts.has(scheduledMessageId)) {
+        clearTimeout(this.activeTimeouts.get(scheduledMessageId));
+        this.activeTimeouts.delete(scheduledMessageId);
+      }
+
+      // Update DB
+      msg.status = "cancelled";
+      await msg.save();
+      
+      logger.info(`🚫 Cancelled scheduled message ${scheduledMessageId} by user ${userId}`);
+      return { success: true };
+    } catch (error) {
+      logger.error("❌ Failed to cancel message:", error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 const service = new ScheduledMessageService();

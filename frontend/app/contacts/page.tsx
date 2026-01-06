@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import UserLayout from '@/components/layout/UserLayout';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
+import ContactTagFilter from '@/components/contacts/ContactTagFilter';
 import { useAppSelector, useAppDispatch } from '@/hooks/useAppDispatch';
 import { fetchConnectedDevices, fetchUserDevices } from '@/store/slices/userDashboardSlice';
 import { getContacts, Contact } from '@/lib/userService';
@@ -22,6 +23,7 @@ function ContactsContent() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -82,20 +84,28 @@ function ContactsContent() {
   }, [selectedDeviceId, loadContacts]);
 
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    if (!searchQuery.trim() && selectedTags.length === 0) {
       setFilteredContacts(contacts);
       return;
     }
 
     const query = searchQuery.toLowerCase();
-    const filtered = contacts.filter(
-      (contact) =>
+    const filtered = contacts.filter((contact) => {
+      // Search filter
+      const matchesSearch = !query || 
         (contact.name && contact.name.toLowerCase().includes(query)) ||
         contact.phoneNumber.includes(query) ||
-        contact.jid.includes(query)
-    );
+        contact.jid.includes(query);
+      
+      // Tag filter (if tags exist on contact)
+      const contactTags = (contact as any).tags as string[] | undefined;
+      const matchesTags = selectedTags.length === 0 || 
+        (contactTags && selectedTags.some(tag => contactTags.includes(tag)));
+      
+      return matchesSearch && matchesTags;
+    });
     setFilteredContacts(filtered);
-  }, [searchQuery, contacts]);
+  }, [searchQuery, selectedTags, contacts]);
 
   const handleContactClick = (contact: Contact) => {
     router.push(`/chat-history?jid=${encodeURIComponent(contact.jid)}&deviceId=${selectedDeviceId}`);
@@ -163,6 +173,16 @@ function ContactsContent() {
               placeholder="Search contacts by name or phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        )}
+
+        {/* Tag Filter */}
+        {selectedDeviceId && contacts.length > 0 && (
+          <div className="mb-4">
+            <ContactTagFilter
+              selectedTags={selectedTags}
+              onTagsChange={setSelectedTags}
             />
           </div>
         )}

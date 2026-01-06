@@ -140,6 +140,48 @@ export interface ContactsResponse {
   total: number;
 }
 
+// User Contacts (Database-backed with tags)
+export interface UserContact {
+  id: number;
+  phoneNumber: string;
+  name: string;
+  email?: string;
+  tags: string[];
+  notes?: string;
+  isBlocked: boolean;
+  lastMessageAt?: string;
+  profilePicture?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserContactsFilter {
+  tags?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface UserContactsResponse {
+  contacts: UserContact[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface SaveContactRequest {
+  phoneNumber: string;
+  name: string;
+  email?: string;
+  tags?: string[];
+  notes?: string;
+}
+
+export interface UserTagsResponse {
+  tags: string[];
+  count: number;
+}
+
 /**
  * Get user's devices
  */
@@ -735,7 +777,8 @@ export async function scheduleMessage(
 
 export interface ScheduledMessage {
   id: string;
-  deviceId: string;
+  deviceId: string | null;
+  deviceName?: string | null;
   phoneNumber: string;
   message: string;
   scheduleTime: string;
@@ -745,8 +788,22 @@ export interface ScheduledMessage {
   error?: string;
 }
 
+export interface ScheduledMessagesFilter {
+  status?: "pending" | "sent" | "failed" | "cancelled";
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ScheduledMessagesResponse {
+  messages: ScheduledMessage[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 /**
- * Get scheduled message history
+ * Get scheduled messages for a specific device
  */
 export async function getScheduledMessages(
   deviceId: string
@@ -769,15 +826,54 @@ export async function getScheduledMessages(
 }
 
 /**
- * Cancel a scheduled message
+ * Get ALL scheduled messages for current user (across all devices)
+ * Supports filtering by status and search
+ */
+export async function getAllScheduledMessages(
+  filters: ScheduledMessagesFilter = {}
+): Promise<ScheduledMessagesResponse> {
+  try {
+    const params = new URLSearchParams();
+    if (filters.status) params.append("status", filters.status);
+    if (filters.search) params.append("search", filters.search);
+    if (filters.limit) params.append("limit", filters.limit.toString());
+    if (filters.offset) params.append("offset", filters.offset.toString());
+
+    const queryString = params.toString();
+    const endpoint = `/whatsapp-multi-device/scheduled-messages${
+      queryString ? `?${queryString}` : ""
+    }`;
+
+    const response = await get<ScheduledMessagesResponse>(endpoint);
+
+    if (!response.success || !response.data) {
+      throw {
+        message: response.message || "Failed to fetch scheduled messages",
+      } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Cancel a scheduled message (uses ownership-validated endpoint)
  */
 export async function cancelScheduledMessage(
-  deviceId: string,
   messageId: string
+): Promise<void>;
+export async function cancelScheduledMessage(
+  deviceIdOrMessageId: string,
+  messageId?: string
 ): Promise<void> {
   try {
+    // Support both old format (deviceId, messageId) and new format (messageId only)
+    const actualMessageId = messageId ?? deviceIdOrMessageId;
+    
     const response = await post<{ message?: string; success: boolean }>(
-      `/whatsapp-multi-device/devices/${deviceId}/scheduled-messages/${messageId}/cancel`,
+      `/whatsapp-multi-device/scheduled-messages/${actualMessageId}/cancel`,
       {}
     );
 
@@ -859,3 +955,315 @@ export function parsePhoneNumbers(input: string): {
   return { valid, invalid, duplicates, normalized };
 }
 
+// ============================================
+// User Contacts (Database-backed with Tags)
+// ============================================
+
+/**
+ * Get user's saved contacts with optional tag filtering
+ */
+export async function getUserContacts(
+  filters: UserContactsFilter = {}
+): Promise<UserContactsResponse> {
+  try {
+    const params = new URLSearchParams();
+    if (filters.tags) params.append("tags", filters.tags);
+    if (filters.search) params.append("search", filters.search);
+    if (filters.limit) params.append("limit", filters.limit.toString());
+    if (filters.offset) params.append("offset", filters.offset.toString());
+
+    const queryString = params.toString();
+    const endpoint = `/whatsapp-multi-device/contacts${
+      queryString ? `?${queryString}` : ""
+    }`;
+
+    const response = await get<UserContactsResponse>(endpoint);
+
+    if (!response.success || !response.data) {
+      throw {
+        message: response.message || "Failed to fetch contacts",
+      } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Save/create a user contact with tags
+ */
+export async function saveUserContact(
+  data: SaveContactRequest
+): Promise<UserContact> {
+  try {
+    const response = await post<UserContact>(
+      "/whatsapp-multi-device/contacts",
+      data
+    );
+
+    if (!response.success || !response.data) {
+      throw {
+        message: response.message || "Failed to save contact",
+      } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Update tags for a specific contact
+ */
+export async function updateContactTags(
+  contactId: number,
+  tags: string[]
+): Promise<UserContact> {
+  try {
+    const response = await put<UserContact>(
+      `/whatsapp-multi-device/contacts/${contactId}/tags`,
+      { tags }
+    );
+
+    if (!response.success || !response.data) {
+      throw {
+        message: response.message || "Failed to update tags",
+      } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Get unique tags for current user (for autocomplete)
+ */
+export async function getUserTags(): Promise<UserTagsResponse> {
+  try {
+    const response = await get<UserTagsResponse>(
+      "/whatsapp-multi-device/tags"
+    );
+
+    if (!response.success || !response.data) {
+      throw {
+        message: response.message || "Failed to fetch tags",
+      } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// ============================================
+// Message Templates
+// ============================================
+
+export interface MessageTemplate {
+  id: number;
+  name: string;
+  content: string;
+  variables: string[];
+  category?: string;
+  usageCount: number;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TemplatesResponse {
+  templates: MessageTemplate[];
+  count: number;
+}
+
+export interface CreateTemplateRequest {
+  name: string;
+  content: string;
+  category?: string;
+}
+
+export interface UseTemplateRequest {
+  variables?: Record<string, string>;
+}
+
+export interface UseTemplateResponse {
+  templateId: number;
+  name: string;
+  originalContent: string;
+  renderedContent: string;
+  variables: string[];
+}
+
+/**
+ * Get all templates for current user
+ */
+export async function getTemplates(
+  options: { category?: string; search?: string; archived?: boolean } = {}
+): Promise<TemplatesResponse> {
+  try {
+    const params = new URLSearchParams();
+    if (options.category) params.append("category", options.category);
+    if (options.search) params.append("search", options.search);
+    if (options.archived) params.append("archived", "true");
+
+    const queryString = params.toString();
+    const endpoint = `/whatsapp-multi-device/templates${queryString ? `?${queryString}` : ""}`;
+
+    const response = await get<TemplatesResponse>(endpoint);
+
+    if (!response.success || !response.data) {
+      throw { message: response.message || "Failed to fetch templates" } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Create a new template
+ */
+export async function createTemplate(
+  data: CreateTemplateRequest
+): Promise<MessageTemplate> {
+  try {
+    const response = await post<MessageTemplate>(
+      "/whatsapp-multi-device/templates",
+      data
+    );
+
+    if (!response.success || !response.data) {
+      throw { message: response.message || "Failed to create template" } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Update a template
+ */
+export async function updateTemplate(
+  templateId: number,
+  data: Partial<CreateTemplateRequest>
+): Promise<MessageTemplate> {
+  try {
+    const response = await put<MessageTemplate>(
+      `/whatsapp-multi-device/templates/${templateId}`,
+      data
+    );
+
+    if (!response.success || !response.data) {
+      throw { message: response.message || "Failed to update template" } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Delete (archive) a template
+ */
+export async function deleteTemplate(templateId: number): Promise<void> {
+  try {
+    const response = await del<{ id: number }>(
+      `/whatsapp-multi-device/templates/${templateId}`
+    );
+
+    if (!response.success) {
+      throw { message: response.message || "Failed to delete template" } as ApiError;
+    }
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Use a template (get rendered content with variables)
+ */
+export async function useTemplate(
+  templateId: number,
+  variables: Record<string, string> = {}
+): Promise<UseTemplateResponse> {
+  try {
+    const response = await post<UseTemplateResponse>(
+      `/whatsapp-multi-device/templates/${templateId}/use`,
+      { variables }
+    );
+
+    if (!response.success || !response.data) {
+      throw { message: response.message || "Failed to use template" } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// ============================================
+// User Statistics / Device Usage Insights
+// ============================================
+
+export interface UserStatisticsSummary {
+  totalMessages: number;
+  successRate: number;
+  sent: number;
+  failed: number;
+  pending: number;
+  activeDevices: number;
+}
+
+export interface DailyBreakdown {
+  date: string;
+  count: number;
+}
+
+export interface DeviceStat {
+  deviceId: string;
+  deviceName: string;
+  messageCount: number;
+}
+
+export interface UserStatisticsResponse {
+  period: string;
+  dateRange: {
+    start: string;
+    end: string;
+  };
+  summary: UserStatisticsSummary;
+  dailyBreakdown: DailyBreakdown[];
+  deviceStats: DeviceStat[];
+}
+
+/**
+ * Get user-level usage statistics
+ */
+export async function getUserStatistics(
+  period: 'today' | 'week' | 'month' = 'week'
+): Promise<UserStatisticsResponse> {
+  try {
+    const response = await get<UserStatisticsResponse>(
+      `/whatsapp-multi-device/user/statistics?period=${period}`
+    );
+
+    if (!response.success || !response.data) {
+      throw { message: response.message || "Failed to fetch statistics" } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}

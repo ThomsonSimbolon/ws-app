@@ -10,6 +10,7 @@ import StatsCard from '@/components/dashboard/StatsCard';
 import Badge from '@/components/ui/Badge';
 import DeleteUserModal from '@/components/admin/DeleteUserModal';
 import DeviceForm from '@/components/admin/DeviceForm';
+import UserInsightPanel from '@/components/admin/UserInsightPanel';
 import { getUserDetails, deleteUser, createDevice } from '@/lib/adminService';
 import { ApiError } from '@/lib/api';
 import SkeletonCard from '@/components/ui/SkeletonCard';
@@ -36,6 +37,9 @@ export default function UserDetailPage() {
   // Create Device Modal
   const [showCreateDeviceModal, setShowCreateDeviceModal] = useState(false);
   const [isCreatingDevice, setIsCreatingDevice] = useState(false);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'details' | 'insights'>('details');
 
   useEffect(() => {
     const fetchUserDetails = async () => {
@@ -198,6 +202,35 @@ export default function UserDetailPage() {
           </div>
         )}
 
+        {/* Tab Navigation */}
+        <div className="flex bg-elevated rounded-lg p-1 w-fit">
+          <button
+            onClick={() => setActiveTab('details')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              activeTab === 'details'
+                ? 'bg-primary text-white shadow-sm'
+                : 'text-text-secondary hover:text-text-primary hover:bg-secondary'
+            }`}
+          >
+            Details
+          </button>
+          <button
+            onClick={() => setActiveTab('insights')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              activeTab === 'insights'
+                ? 'bg-primary text-white shadow-sm'
+                : 'text-text-secondary hover:text-text-primary hover:bg-secondary'
+            }`}
+          >
+            Insights
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'insights' ? (
+          <UserInsightPanel userId={userId} />
+        ) : (
+          <>
         {/* User Information Card */}
         <Card padding="lg">
           <h2 className="text-xl font-semibold text-text-primary mb-4">User Information</h2>
@@ -331,6 +364,8 @@ export default function UserDetailPage() {
             </div>
           )}
         </Card>
+          </>
+        )}
 
         {/* Create Device Modal */}
         {showCreateDeviceModal && (

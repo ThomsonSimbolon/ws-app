@@ -4,6 +4,7 @@ import authReducer from "./slices/authSlice";
 import dashboardReducer from "./slices/dashboardSlice";
 import userDashboardReducer from "./slices/userDashboardSlice";
 import deviceReducer from "./slices/deviceSlice";
+import notificationReducer from "./slices/notificationSlice";
 
 /**
  * Redux Store Configuration
@@ -13,6 +14,7 @@ import deviceReducer from "./slices/deviceSlice";
  * - auth: User authentication and profile (global)
  * - dashboard: Admin dashboard stats and transactions data (global)
  * - userDashboard: User dashboard data (devices, chats) (global)
+ * - notifications: SSE-powered real-time notifications (global)
  *
  * NOT stored in Redux:
  * - UI state (sidebar open/closed, dropdown states, modal visibility)
@@ -29,6 +31,7 @@ export const store = configureStore({
     dashboard: dashboardReducer,
     userDashboard: userDashboardReducer,
     device: deviceReducer,
+    notifications: notificationReducer,
   },
   // Redux DevTools enabled in development only
   devTools: process.env.NODE_ENV !== "production",

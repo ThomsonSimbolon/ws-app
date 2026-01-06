@@ -9,6 +9,7 @@ const Group = require("./Group");
 const Statistic = require("./Statistic");
 const ScheduledMessage = require("./ScheduledMessage");
 const AdminActionLog = require("./AdminActionLog");
+const MessageTemplate = require("./MessageTemplate");
 const { sequelize } = require("../config/database");
 
 // Define associations
@@ -110,6 +111,17 @@ AdminActionLog.belongsTo(User, {
   as: "admin",
 });
 
+// MessageTemplate associations
+User.hasMany(MessageTemplate, {
+  foreignKey: "user_id",
+  as: "messageTemplates",
+});
+
+MessageTemplate.belongsTo(User, {
+  foreignKey: "user_id",
+  as: "user",
+});
+
 module.exports = {
   sequelize,
   User,
@@ -120,4 +132,5 @@ module.exports = {
   Statistic,
   ScheduledMessage,
   AdminActionLog,
+  MessageTemplate,
 };

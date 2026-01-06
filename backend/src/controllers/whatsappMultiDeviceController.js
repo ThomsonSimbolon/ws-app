@@ -3,7 +3,7 @@ const whatsappService = require("../services/whatsappService");
 const jobQueueService = require("../services/jobQueueService");
 const statisticsService = require("../services/statisticsService");
 const scheduledMessageService = require("../services/scheduledMessageService");
-const { Group, Message, WhatsAppSession } = require("../models");
+const { Group, Message, WhatsAppSession, Contact, MessageTemplate } = require("../models");
 const { Op } = require("sequelize");
 const fs = require("fs");
 const logger = require("../utils/logger");
@@ -3159,6 +3159,197 @@ const getContacts = async (req, res) => {
 };
 
 /**
+ * Get user's saved contacts (from database)
+ * Supports filtering by tags and search
+ */
+const getUserContacts = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { tags, search, limit = 50, offset = 0 } = req.query;
+
+    const whereClause = { userId };
+    
+    // Tag filtering (comma-separated)
+    if (tags) {
+      const tagList = tags.split(',').map(t => t.trim()).filter(Boolean);
+      if (tagList.length > 0) {
+        whereClause[Op.and] = tagList.map(tag => ({
+          tags: {
+            [Op.like]: `%"${tag}"%`
+          }
+        }));
+      }
+    }
+    
+    // Search filter
+    if (search) {
+      whereClause[Op.or] = [
+        { phoneNumber: { [Op.like]: `%${search}%` } },
+        { name: { [Op.like]: `%${search}%` } }
+      ];
+    }
+
+    const { rows: contacts, count: total } = await Contact.findAndCountAll({
+      where: whereClause,
+      order: [["name", "ASC"]],
+      limit: Math.min(parseInt(limit, 10), 100),
+      offset: parseInt(offset, 10)
+    });
+
+    const { response, statusCode } = successResponse({
+      contacts: contacts.map(c => ({
+        id: c.id,
+        phoneNumber: c.phoneNumber,
+        name: c.name,
+        email: c.email,
+        tags: c.tags || [],
+        notes: c.notes,
+        isBlocked: c.isBlocked,
+        lastMessageAt: c.lastMessageAt,
+        profilePicture: c.profilePicture,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt
+      })),
+      total,
+      limit: Math.min(parseInt(limit, 10), 100),
+      offset: parseInt(offset, 10)
+    });
+
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("Get user contacts error:", error);
+    const { response, statusCode } = errorResponse(
+      "Gagal mendapatkan daftar kontak",
+      error.message,
+      500
+    );
+    res.status(statusCode).json(response);
+  }
+};
+
+/**
+ * Save/create a contact (from database)
+ */
+const saveContact = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { phoneNumber, name, email, tags = [], notes } = req.body;
+
+    if (!phoneNumber || !name) {
+      const { response, statusCode } = errorResponse(
+        "Phone number dan nama wajib diisi",
+        null,
+        400
+      );
+      return res.status(statusCode).json(response);
+    }
+
+    const normalizedPhone = normalizePhoneNumber(phoneNumber);
+    if (!normalizedPhone) {
+      const { response, statusCode } = errorResponse(
+        "Format nomor telepon tidak valid",
+        null,
+        400
+      );
+      return res.status(statusCode).json(response);
+    }
+
+    if (!Array.isArray(tags) || tags.length > 10) {
+      const { response, statusCode } = errorResponse(
+        "Tags harus berupa array (maksimal 10)",
+        null,
+        400
+      );
+      return res.status(statusCode).json(response);
+    }
+
+    const sanitizedTags = tags
+      .slice(0, 10)
+      .map(t => String(t).trim().slice(0, 30))
+      .filter(t => t.length > 0 && /^[\w\s-]+$/.test(t));
+
+    const [contact, created] = await Contact.findOrCreate({
+      where: { userId, phoneNumber: normalizedPhone },
+      defaults: { name, email: email || null, tags: sanitizedTags, notes: notes || null }
+    });
+
+    if (!created) {
+      await contact.update({ name, email: email || contact.email, tags: sanitizedTags, notes: notes || contact.notes });
+    }
+
+    const { response, statusCode } = successResponse(
+      { id: contact.id, phoneNumber: contact.phoneNumber, name: contact.name, tags: contact.tags || [] },
+      created ? "Kontak berhasil disimpan" : "Kontak berhasil diperbarui",
+      created ? 201 : 200
+    );
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("Save contact error:", error);
+    const { response, statusCode } = errorResponse("Gagal menyimpan kontak", error.message, 500);
+    res.status(statusCode).json(response);
+  }
+};
+
+/**
+ * Update contact tags only
+ */
+const updateContactTags = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { contactId } = req.params;
+    const { tags } = req.body;
+
+    if (!Array.isArray(tags) || tags.length > 10) {
+      const { response, statusCode } = errorResponse("Tags harus berupa array (maksimal 10)", null, 400);
+      return res.status(statusCode).json(response);
+    }
+
+    const contact = await Contact.findOne({ where: { id: contactId, userId } });
+    if (!contact) {
+      const { response, statusCode } = errorResponse("Kontak tidak ditemukan", null, 404);
+      return res.status(statusCode).json(response);
+    }
+
+    const sanitizedTags = tags.slice(0, 10).map(t => String(t).trim().slice(0, 30)).filter(t => t.length > 0 && /^[\w\s-]+$/.test(t));
+    await contact.update({ tags: sanitizedTags });
+
+    const { response, statusCode } = successResponse(
+      { id: contact.id, phoneNumber: contact.phoneNumber, name: contact.name, tags: contact.tags || [] },
+      "Tags berhasil diperbarui"
+    );
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("Update contact tags error:", error);
+    const { response, statusCode } = errorResponse("Gagal memperbarui tags", error.message, 500);
+    res.status(statusCode).json(response);
+  }
+};
+
+/**
+ * Get unique tags for current user (for autocomplete)
+ */
+const getUserTags = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const contacts = await Contact.findAll({ where: { userId }, attributes: ['tags'] });
+    
+    const tagSet = new Set();
+    for (const contact of contacts) {
+      if (Array.isArray(contact.tags)) {
+        contact.tags.forEach(tag => tagSet.add(tag));
+      }
+    }
+
+    const { response, statusCode } = successResponse({ tags: Array.from(tagSet).sort(), count: tagSet.size });
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("Get user tags error:", error);
+    const { response, statusCode } = errorResponse("Gagal mendapatkan daftar tags", error.message, 500);
+    res.status(statusCode).json(response);
+  }
+};
+
+/**
  * Schedule a message
  */
 const scheduleMessage = async (req, res) => {
@@ -3329,6 +3520,90 @@ const listScheduledMessages = async (req, res) => {
   }
 };
 
+/**
+ * List ALL scheduled messages for current user (across all devices)
+ * Supports filtering by status and search
+ */
+const listAllScheduledMessages = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { status, search, limit = 50, offset = 0 } = req.query;
+
+    const result = await scheduledMessageService.listScheduledMessagesForUser(userId, {
+      status,
+      search,
+      limit: parseInt(limit, 10),
+      offset: parseInt(offset, 10)
+    });
+
+    const { response, statusCode } = successResponse({
+      messages: result.messages,
+      total: result.total,
+      limit: result.limit,
+      offset: result.offset,
+    });
+
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("List all scheduled messages error:", error);
+    const { response, statusCode } = errorResponse(
+      "Gagal mendapatkan daftar pesan terjadwal",
+      error.message,
+      500
+    );
+    res.status(statusCode).json(response);
+  }
+};
+
+/**
+ * Cancel a scheduled message
+ * Only pending messages can be cancelled
+ * User can only cancel their own messages (ownership enforced)
+ */
+const cancelScheduledMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const userId = req.user.id;
+
+    if (!messageId) {
+      const { response, statusCode } = errorResponse(
+        "Message ID wajib diisi",
+        null,
+        400
+      );
+      return res.status(statusCode).json(response);
+    }
+
+    const result = await scheduledMessageService.cancelScheduledMessageWithOwnership(
+      messageId,
+      userId
+    );
+
+    if (!result.success) {
+      const { response, statusCode } = errorResponse(
+        result.error,
+        null,
+        result.error.includes("not found") ? 404 : 400
+      );
+      return res.status(statusCode).json(response);
+    }
+
+    const { response, statusCode } = successResponse(
+      { messageId, cancelled: true },
+      "Pesan terjadwal berhasil dibatalkan"
+    );
+
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("Cancel scheduled message error:", error);
+    const { response, statusCode } = errorResponse(
+      "Gagal membatalkan pesan terjadwal",
+      error.message,
+      500
+    );
+    res.status(statusCode).json(response);
+  }
+};
 
 /**
  * Get daily chat list (active chats for a specific date)
@@ -3692,7 +3967,477 @@ module.exports = {
   getStatistics,
   getDailyActivity,
   getContacts,
+  getUserContacts,
+  saveContact,
+  updateContactTags,
+  getUserTags,
   scheduleMessage,
   listScheduledMessages,
+  listAllScheduledMessages,
+  cancelScheduledMessage,
+};
+
+// Maximum templates per user
+const MAX_TEMPLATES_PER_USER = 50;
+
+/**
+ * Get all templates for current user
+ */
+const getTemplates = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { category, search, archived = false } = req.query;
+
+    const whereClause = { 
+      userId,
+      isArchived: archived === 'true' || archived === true
+    };
+    
+    if (category) {
+      whereClause.category = category;
+    }
+    
+    if (search) {
+      whereClause[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { content: { [Op.like]: `%${search}%` } }
+      ];
+    }
+
+    const templates = await MessageTemplate.findAll({
+      where: whereClause,
+      order: [["usageCount", "DESC"], ["updatedAt", "DESC"]],
+      limit: MAX_TEMPLATES_PER_USER
+    });
+
+    const { response, statusCode } = successResponse({
+      templates: templates.map(t => ({
+        id: t.id,
+        name: t.name,
+        content: t.content,
+        variables: t.variables,
+        category: t.category,
+        usageCount: t.usageCount,
+        isArchived: t.isArchived,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt
+      })),
+      count: templates.length
+    });
+
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("Get templates error:", error);
+    const { response, statusCode } = errorResponse("Gagal mendapatkan daftar template", error.message, 500);
+    res.status(statusCode).json(response);
+  }
+};
+
+/**
+ * Create a new template
+ */
+const createTemplate = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { name, content, category } = req.body;
+
+    if (!name || !content) {
+      const { response, statusCode } = errorResponse("Nama dan content wajib diisi", null, 400);
+      return res.status(statusCode).json(response);
+    }
+
+    // Check template limit
+    const count = await MessageTemplate.count({ where: { userId, isArchived: false } });
+    if (count >= MAX_TEMPLATES_PER_USER) {
+      const { response, statusCode } = errorResponse(
+        `Maksimal ${MAX_TEMPLATES_PER_USER} template per user. Hapus template lama terlebih dahulu.`,
+        null,
+        400
+      );
+      return res.status(statusCode).json(response);
+    }
+
+    // Sanitize content (basic XSS prevention)
+    const sanitizedContent = content
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<[^>]*>/g, '')
+      .slice(0, 2000);
+
+    const template = await MessageTemplate.create({
+      userId,
+      name: name.slice(0, 100),
+      content: sanitizedContent,
+      category: category ? category.slice(0, 50) : null
+    });
+
+    const { response, statusCode } = successResponse(
+      {
+        id: template.id,
+        name: template.name,
+        content: template.content,
+        variables: template.variables,
+        category: template.category
+      },
+      "Template berhasil dibuat",
+      201
+    );
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("Create template error:", error);
+    let message = "Gagal membuat template";
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      message = "Template dengan nama tersebut sudah ada";
+    }
+    const { response, statusCode } = errorResponse(message, error.message, 400);
+    res.status(statusCode).json(response);
+  }
+};
+
+/**
+ * Update a template
+ */
+const updateTemplate = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { templateId } = req.params;
+    const { name, content, category } = req.body;
+
+    const template = await MessageTemplate.findOne({ where: { id: templateId, userId } });
+    if (!template) {
+      const { response, statusCode } = errorResponse("Template tidak ditemukan", null, 404);
+      return res.status(statusCode).json(response);
+    }
+
+    const updates = {};
+    if (name) updates.name = name.slice(0, 100);
+    if (content) {
+      updates.content = content
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/<[^>]*>/g, '')
+        .slice(0, 2000);
+    }
+    if (category !== undefined) updates.category = category ? category.slice(0, 50) : null;
+
+    await template.update(updates);
+
+    const { response, statusCode } = successResponse(
+      { id: template.id, name: template.name, content: template.content, variables: template.variables },
+      "Template berhasil diperbarui"
+    );
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("Update template error:", error);
+    const { response, statusCode } = errorResponse("Gagal memperbarui template", error.message, 500);
+    res.status(statusCode).json(response);
+  }
+};
+
+/**
+ * Delete (archive) a template
+ */
+const deleteTemplate = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { templateId } = req.params;
+
+    const template = await MessageTemplate.findOne({ where: { id: templateId, userId } });
+    if (!template) {
+      const { response, statusCode } = errorResponse("Template tidak ditemukan", null, 404);
+      return res.status(statusCode).json(response);
+    }
+
+    // Soft delete (archive)
+    await template.update({ isArchived: true });
+
+    const { response, statusCode } = successResponse({ id: template.id }, "Template berhasil dihapus");
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("Delete template error:", error);
+    const { response, statusCode } = errorResponse("Gagal menghapus template", error.message, 500);
+    res.status(statusCode).json(response);
+  }
+};
+
+/**
+ * Use a template (increment usage count and return rendered content)
+ */
+const useTemplate = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { templateId } = req.params;
+    const { variables = {} } = req.body;
+
+    const template = await MessageTemplate.findOne({ where: { id: templateId, userId } });
+    if (!template) {
+      const { response, statusCode } = errorResponse("Template tidak ditemukan", null, 404);
+      return res.status(statusCode).json(response);
+    }
+
+    // Replace variables in content
+    let renderedContent = template.content;
+    for (const [key, value] of Object.entries(variables)) {
+      // Sanitize variable values (text only)
+      const safeValue = String(value).replace(/<[^>]*>/g, '').slice(0, 200);
+      renderedContent = renderedContent.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), safeValue);
+    }
+
+    // Increment usage count
+    await template.increment('usageCount');
+
+    const { response, statusCode } = successResponse({
+      templateId: template.id,
+      name: template.name,
+      originalContent: template.content,
+      renderedContent,
+      variables: template.variables
+    });
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("Use template error:", error);
+    const { response, statusCode } = errorResponse("Gagal menggunakan template", error.message, 500);
+    res.status(statusCode).json(response);
+  }
+};
+
+module.exports = {
+  createDevice,
+  listDevices,
+  listConnectedDevices,
+  getDevice,
+  getDeviceStatus,
+  connectDevice,
+  disconnectDevice,
+  deleteDevice,
+  cancelAndWipeDevice,
+  getQRCode,
+  getQRCodeImage,
+  generatePairingCode,
+  sendMessage,
+  sendMedia,
+  createSendTextJob,
+  createSendMediaJob,
+  getJobStatus,
+  cancelJob,
+  listGroups,
+  createGroup,
+  getGroupInfo,
+  sendGroupMessage,
+  sendGroupMentionMessage,
+  sendGroupMedia,
+  createSendGroupMediaJob,
+  inviteParticipants,
+  kickParticipant,
+  promoteAdmin,
+  demoteAdmin,
+  getChatHistory,
+  getGroupChatHistory,
+  getDailyChatList,
+  getStatistics,
+  getDailyActivity,
+  getContacts,
+  getUserContacts,
+  saveContact,
+  updateContactTags,
+  getUserTags,
+  scheduleMessage,
+  listScheduledMessages,
+  listAllScheduledMessages,
+  cancelScheduledMessage,
+  getTemplates,
+  createTemplate,
+  updateTemplate,
+  deleteTemplate,
+  useTemplate,
+};
+
+/**
+ * Get user-level usage statistics
+ * Aggregates message data for the authenticated user
+ */
+const getUserStatistics = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { period = 'week' } = req.query; // today, week, month
+
+    // Determine date range
+    const now = new Date();
+    let startDate;
+    switch (period) {
+      case 'today':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'month':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'week':
+      default:
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+    }
+
+    // Get total messages in period
+    const totalMessages = await Message.count({
+      where: {
+        userId,
+        direction: 'outgoing',
+        timestamp: { [Op.gte]: startDate }
+      }
+    });
+
+    // Get messages by status
+    const messagesByStatus = await Message.findAll({
+      where: {
+        userId,
+        direction: 'outgoing',
+        timestamp: { [Op.gte]: startDate }
+      },
+      attributes: [
+        'status',
+        [Message.sequelize.fn('COUNT', Message.sequelize.col('id')), 'count']
+      ],
+      group: ['status'],
+      raw: true
+    });
+
+    // Calculate success rate
+    const statusCounts = {};
+    messagesByStatus.forEach(row => {
+      statusCounts[row.status] = parseInt(row.count, 10);
+    });
+    
+    const sent = (statusCounts.sent || 0) + (statusCounts.delivered || 0) + (statusCounts.read || 0);
+    const failed = statusCounts.failed || 0;
+    const successRate = totalMessages > 0 ? Math.round((sent / totalMessages) * 100) : 0;
+
+    // Get active devices count
+    const activeDevices = await WhatsAppSession.count({
+      where: { userId, status: 'connected' }
+    });
+
+    // Get daily breakdown (last 7 days)
+    const dailyBreakdown = [];
+    for (let i = 6; i >= 0; i--) {
+      const day = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
+      const count = await Message.count({
+        where: {
+          userId,
+          direction: 'outgoing',
+          timestamp: { [Op.gte]: dayStart, [Op.lt]: dayEnd }
+        }
+      });
+
+      dailyBreakdown.push({
+        date: dayStart.toISOString().split('T')[0],
+        count
+      });
+    }
+
+    // Get per-device stats
+    const deviceStats = await Message.findAll({
+      where: {
+        userId,
+        direction: 'outgoing',
+        timestamp: { [Op.gte]: startDate }
+      },
+      include: [{
+        model: WhatsAppSession,
+        as: 'session',
+        attributes: ['deviceId', 'deviceName']
+      }],
+      attributes: [
+        'sessionId',
+        [Message.sequelize.fn('COUNT', Message.sequelize.col('Message.id')), 'messageCount']
+      ],
+      group: ['sessionId', 'session.id'],
+      raw: true
+    });
+
+    const { response, statusCode } = successResponse({
+      period,
+      dateRange: {
+        start: startDate.toISOString(),
+        end: now.toISOString()
+      },
+      summary: {
+        totalMessages,
+        successRate,
+        sent,
+        failed,
+        pending: statusCounts.pending || 0,
+        activeDevices
+      },
+      dailyBreakdown,
+      deviceStats: deviceStats.map(d => ({
+        deviceId: d['session.deviceId'],
+        deviceName: d['session.deviceName'],
+        messageCount: parseInt(d.messageCount, 10)
+      }))
+    });
+
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("Get user statistics error:", error);
+    const { response, statusCode } = errorResponse(
+      "Gagal mendapatkan statistik",
+      error.message,
+      500
+    );
+    res.status(statusCode).json(response);
+  }
+};
+
+module.exports = {
+  createDevice,
+  listDevices,
+  listConnectedDevices,
+  getDevice,
+  getDeviceStatus,
+  connectDevice,
+  disconnectDevice,
+  deleteDevice,
+  cancelAndWipeDevice,
+  getQRCode,
+  getQRCodeImage,
+  generatePairingCode,
+  sendMessage,
+  sendMedia,
+  createSendTextJob,
+  createSendMediaJob,
+  getJobStatus,
+  cancelJob,
+  listGroups,
+  createGroup,
+  getGroupInfo,
+  sendGroupMessage,
+  sendGroupMentionMessage,
+  sendGroupMedia,
+  createSendGroupMediaJob,
+  inviteParticipants,
+  kickParticipant,
+  promoteAdmin,
+  demoteAdmin,
+  getChatHistory,
+  getGroupChatHistory,
+  getDailyChatList,
+  getStatistics,
+  getDailyActivity,
+  getContacts,
+  getUserContacts,
+  saveContact,
+  updateContactTags,
+  getUserTags,
+  scheduleMessage,
+  listScheduledMessages,
+  listAllScheduledMessages,
+  cancelScheduledMessage,
+  getTemplates,
+  createTemplate,
+  updateTemplate,
+  deleteTemplate,
+  useTemplate,
+  getUserStatistics,
 };
 

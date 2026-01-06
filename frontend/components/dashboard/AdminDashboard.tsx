@@ -16,6 +16,7 @@ import DeviceMonitoring from '../admin/DeviceMonitoring';
 import JobManager from '../admin/JobManager';
 import AuditLogViewer from '../admin/AuditLogViewer';
 import UserManagement from '../admin/UserManagement';
+import DataExport from '../admin/DataExport';
 
 export default function AdminDashboard() {
   const dispatch = useAppDispatch();
@@ -119,6 +120,8 @@ export default function AdminDashboard() {
         return <div className="fade-in"><JobManager /></div>;
       case 'audit':
         return <div className="fade-in"><AuditLogViewer /></div>;
+      case 'export':
+        return <div className="fade-in"><DataExport /></div>;
       default:
         return null;
     }
@@ -141,6 +144,7 @@ export default function AdminDashboard() {
             { id: 'users', label: 'User Mgmt' },
             { id: 'jobs', label: 'Job Queue' },
             { id: 'audit', label: 'Audit Logs' },
+            { id: 'export', label: 'Export' },
           ].map((tab) => (
             <button
               key={tab.id}

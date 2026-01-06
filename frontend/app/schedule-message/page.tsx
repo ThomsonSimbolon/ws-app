@@ -7,13 +7,13 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { useAppSelector, useAppDispatch } from '@/hooks/useAppDispatch';
 import { fetchUserDevices, fetchConnectedDevices } from '@/store/slices/userDashboardSlice';
-import { scheduleMessage, normalizePhoneNumber, parsePhoneNumbers } from '@/lib/userService';
-import { ApiError } from '@/lib/api';
+import { scheduleMessage, parsePhoneNumbers } from '@/lib/userService';
 import TargetNumbersInput from '@/components/scheduler/TargetNumbersInput';
 import ScheduleTimePicker from '@/components/scheduler/ScheduleTimePicker';
 import ExecutionProgress from '@/components/scheduler/ExecutionProgress';
 import ResultsSummary from '@/components/scheduler/ResultsSummary';
 import ScheduledMessageHistory from '@/components/scheduler/ScheduledMessageHistory';
+import ScheduledMessageManager from '@/components/scheduler/ScheduledMessageManager';
 
 function ScheduleMessageContent() {
   const router = useRouter();
@@ -24,7 +24,7 @@ function ScheduleMessageContent() {
     (state) => state.userDashboard
   );
 
-  const [activeTab, setActiveTab] = useState<'schedule' | 'history'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'history' | 'all'>('schedule');
   const [refreshHistory, setRefreshHistory] = useState(0);
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
@@ -186,7 +186,17 @@ function ScheduleMessageContent() {
               : 'border-transparent text-text-secondary hover:text-text-primary'
           }`}
         >
-          History
+          History (Device)
+        </button>
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'all'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-text-secondary hover:text-text-primary'
+          }`}
+        >
+          All Scheduled
         </button>
       </div>
 
@@ -330,13 +340,23 @@ function ScheduleMessageContent() {
                 </div>
             )}
           </>
-      ) : (
+      ) : activeTab === 'history' ? (
           <Card padding="md">
               <ScheduledMessageHistory 
                   deviceId={selectedDeviceId} 
                   refreshTrigger={refreshHistory} 
               />
           </Card>
+      ) : (
+          /* All Scheduled Messages Tab */
+          <ScheduledMessageManager 
+            onReschedule={(msg) => {
+              // Pre-fill the schedule form with failed message data
+              setPhoneInput(msg.phoneNumber);
+              setMessage(msg.message);
+              setActiveTab('schedule');
+            }}
+          />
       )}
 
     </div>

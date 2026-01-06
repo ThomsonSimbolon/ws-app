@@ -6,9 +6,10 @@ import UserLayout from '@/components/layout/UserLayout';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
+import TemplateLibrary from '@/components/templates/TemplateLibrary';
 import { useAppSelector, useAppDispatch } from '@/hooks/useAppDispatch';
 import { fetchUserDevices, fetchConnectedDevices } from '@/store/slices/userDashboardSlice';
-import { sendMessage, sendMedia } from '@/lib/userService';
+import { sendMessage, sendMedia, MessageTemplate, useTemplate } from '@/lib/userService';
 import { ApiError } from '@/lib/api';
 
 type MessageMode = 'text' | 'media';
@@ -48,6 +49,7 @@ function SendMessageContent() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -233,6 +235,51 @@ function SendMessageContent() {
           <p className="text-sm text-success">
             {mode === 'text' ? 'Message' : 'Media'} sent successfully!
           </p>
+        </div>
+      )}
+
+      {/* Template Selector (collapsible) */}
+      {mode === 'text' && (
+        <div className="border border-border rounded-lg overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowTemplates(!showTemplates)}
+            className="w-full px-4 py-3 bg-elevated flex items-center justify-between hover:bg-elevated/80 transition-colors"
+          >
+            <span className="font-medium text-text-primary flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Message Templates
+            </span>
+            <svg
+              className={`w-5 h-5 text-text-secondary transition-transform ${showTemplates ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showTemplates && (
+            <div className="p-4 border-t border-border">
+              <TemplateLibrary
+                selectable
+                onSelectTemplate={async (template) => {
+                  try {
+                    // Use template to get rendered content (no variables for now)
+                    const result = await useTemplate(template.id);
+                    setMessage(result.renderedContent);
+                    setShowTemplates(false);
+                  } catch {
+                    // Fallback to original content if useTemplate fails
+                    setMessage(template.content);
+                    setShowTemplates(false);
+                  }
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
 

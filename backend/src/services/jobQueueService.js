@@ -1,5 +1,14 @@
 const logger = require("../utils/logger");
 
+// Lazy-load whatsappService to avoid circular dependency
+let whatsappService = null;
+const getWhatsAppService = () => {
+  if (!whatsappService) {
+    whatsappService = require("./whatsappService");
+  }
+  return whatsappService;
+};
+
 /**
  * Job Queue Service
  * 
@@ -9,6 +18,7 @@ const logger = require("../utils/logger");
  * - Job cancellation support
  * - Delay management
  * - Async processing
+ * - Real-time SSE progress broadcasting
  */
 class JobQueueService {
   constructor() {
@@ -21,7 +31,36 @@ class JobQueueService {
     
     // Job counter
     this.jobCounter = 0;
+
+    // Batched SSE update tracking
+    this.pendingSSEUpdates = new Map(); // jobId -> last broadcast time
+    this.SSE_UPDATE_INTERVAL = 1500; // 1.5 seconds between updates
   }
+
+  /**
+   * Broadcast job progress via SSE (batched to avoid overwhelming clients)
+   * @param {Object} job - Job object
+   * @param {boolean} force - Force immediate broadcast (for status changes)
+   */
+  broadcastJobProgress(job, force = false) {
+    const now = Date.now();
+    const lastBroadcast = this.pendingSSEUpdates.get(job.id) || 0;
+
+    // Skip if we broadcast recently (unless forced)
+    if (!force && (now - lastBroadcast) < this.SSE_UPDATE_INTERVAL) {
+      return;
+    }
+
+    this.pendingSSEUpdates.set(job.id, now);
+
+    try {
+      const ws = getWhatsAppService();
+      ws.broadcastJobProgress(job);
+    } catch (error) {
+      logger.warn(`⚠️ Failed to broadcast job progress for ${job.id}:`, error.message);
+    }
+  }
+
 
   /**
    * Generate unique job ID
@@ -135,7 +174,7 @@ class JobQueueService {
     }
 
     logger.info(`🚫 Cancelled job ${jobId}`);
-    logger.info(`🚫 Cancelled job ${jobId}`);
+    this.broadcastJobProgress(job, true); // Force immediate broadcast
     return true;
   }
 
@@ -159,6 +198,7 @@ class JobQueueService {
     
     // Worker loop will detect status change and stop
     logger.info(`II Paused job ${jobId}`);
+    this.broadcastJobProgress(job, true); // Force immediate broadcast
     return true;
   }
 
@@ -180,6 +220,7 @@ class JobQueueService {
 
     job.status = 'queued'; // Re-queue it
     logger.info(`▶️ Resuming job ${jobId}`);
+    this.broadcastJobProgress(job, true); // Force immediate broadcast
 
     // Restart processing (processJob handles resuming logic)
     this.processJob(jobId).catch(error => {
@@ -289,6 +330,9 @@ class JobQueueService {
         job.startedAt = new Date();
     }
 
+    // Broadcast job start
+    this.broadcastJobProgress(job, true);
+
     // Store worker info for cancellation/pausing
     const worker = {
       cancelled: false,
@@ -313,8 +357,10 @@ class JobQueueService {
         job.status = 'completed';
         job.completedAt = new Date();
         logger.info(`✅ Job ${jobId} completed successfully`);
+        this.broadcastJobProgress(job, true); // Final status broadcast
       } else if (job.status === 'paused') {
           logger.info(`II Job ${jobId} paused`);
+          this.broadcastJobProgress(job, true); // Paused status broadcast
       }
     } catch (error) {
       if (!worker.cancelled) {
@@ -322,6 +368,7 @@ class JobQueueService {
         job.error = error.message;
         job.completedAt = new Date();
         logger.error(`❌ Job ${jobId} failed:`, error);
+        this.broadcastJobProgress(job, true); // Failed status broadcast
       }
     } finally {
       this.workers.delete(jobId);
@@ -383,6 +430,9 @@ class JobQueueService {
           message: message.message,
           timestamp: new Date(),
         });
+
+        // Broadcast progress update (batched automatically)
+        this.broadcastJobProgress(job);
 
         logger.info(`✅ Job ${job.id}: Sent message ${i + 1}/${messages.length} to ${message.to}`);
 
@@ -556,6 +606,9 @@ class JobQueueService {
         }
         
         job.progress.completed++;
+        
+        // Broadcast progress update (batched automatically)
+        this.broadcastJobProgress(job);
         
         const target = targetType === 'contact' ? (item.to || item.phoneNumber) : item.groupId;
         logger.info(`✅ Job ${job.id}: Sent media ${i + 1}/${items.length} to ${target}`);

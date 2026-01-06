@@ -9,13 +9,15 @@ interface DeviceTableProps {
   isLoading?: boolean;
   onDisconnect: (deviceId: string) => void;
   onDelete: (deviceId: string) => void;
+  onViewHealth?: (deviceId: string) => void;
 }
 
 export default function DeviceTable({ 
   devices, 
   isLoading = false, 
   onDisconnect, 
-  onDelete 
+  onDelete,
+  onViewHealth 
 }: DeviceTableProps) {
   const formatRelativeTime = (dateString?: string) => {
     if (!dateString) return 'Never';
@@ -127,6 +129,15 @@ export default function DeviceTable({
               </td>
               <td className="py-3 px-4">
                 <div className="flex items-center justify-end gap-2">
+                  {onViewHealth && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onViewHealth(device.deviceId)}
+                    >
+                      Health
+                    </Button>
+                  )}
                   {device.user && (
                     <Link href={`/admin/users/${device.user.id}`}>
                       <Button variant="ghost" size="sm">

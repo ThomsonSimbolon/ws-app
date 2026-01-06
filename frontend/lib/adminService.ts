@@ -176,6 +176,7 @@ export interface PaginationInfo {
   totalUsers?: number;
   totalDevices?: number;
   totalMessages?: number;
+  totalLogs?: number;
   hasNext: boolean;
   hasPrev: boolean;
 }
@@ -491,6 +492,66 @@ export async function deleteDevice(deviceId: string): Promise<void> {
         message: response.message || "Failed to delete device",
       } as ApiError;
     }
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Device health metrics interface
+ */
+export interface DeviceHealth {
+  deviceId: string;
+  deviceName: string;
+  phoneNumber?: string | null;
+  owner?: {
+    id: number;
+    username: string;
+    fullName: string;
+  } | null;
+  health: {
+    overallScore: number;
+    status: 'healthy' | 'warning' | 'critical';
+    metrics: {
+      uptime7d: number;
+      messageSuccessRate: number;
+      sessionRestarts24h: number;
+      stuckDuration: number | null;
+      lastSeenMinutes: number | null;
+    };
+    current: {
+      status: string;
+      isActive: boolean;
+      lastSeen?: string;
+    };
+    alerts: Array<{
+      type: 'info' | 'warning' | 'danger';
+      message: string;
+    }>;
+  };
+  timestamp: string;
+}
+
+export interface DeviceHealthResponse {
+  data: DeviceHealth;
+}
+
+/**
+ * Get device health metrics (Admin only)
+ */
+export async function getDeviceHealth(deviceId: string): Promise<DeviceHealth> {
+  try {
+    const response = await get<DeviceHealth>(
+      `/admin/devices/${deviceId}/health`
+    );
+
+    if (!response.success || !response.data) {
+      throw {
+        message: response.message || "Failed to fetch device health",
+      } as ApiError;
+    }
+
+    return response.data;
   } catch (error) {
     throw error;
   }
@@ -850,13 +911,44 @@ export interface GetAuditLogsParams {
   adminId?: number | "";
   action?: string;
   targetType?: string;
+  targetId?: string;
   startDate?: string;
   endDate?: string;
+  search?: string;
 }
 
 export interface AuditLogsResponse {
   logs: AdminActionLog[];
   pagination: PaginationInfo;
+}
+
+export interface LogFilters {
+  actions: string[];
+  targetTypes: string[];
+  admins: Array<{
+    id: number;
+    username: string;
+    fullName?: string;
+  }>;
+}
+
+/**
+ * Get available filter options for audit logs
+ */
+export async function getLogFilters(): Promise<LogFilters> {
+  try {
+    const response = await get<LogFilters>("/admin/logs/filters");
+
+    if (!response.success || !response.data) {
+      throw {
+        message: response.message || "Failed to fetch log filters",
+      } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
 }
 
 /**
@@ -872,8 +964,10 @@ export async function getAuditLogs(
       adminId,
       action,
       targetType,
+      targetId,
       startDate,
       endDate,
+      search,
     } = params;
 
     // Build query string
@@ -883,8 +977,10 @@ export async function getAuditLogs(
     if (adminId) queryParams.append("adminId", adminId.toString());
     if (action) queryParams.append("action", action);
     if (targetType) queryParams.append("targetType", targetType);
+    if (targetId) queryParams.append("targetId", targetId);
     if (startDate) queryParams.append("startDate", startDate);
     if (endDate) queryParams.append("endDate", endDate);
+    if (search) queryParams.append("search", search);
 
     const response = await get<AuditLogsResponse>(
       `/admin/logs?${queryParams.toString()}`
@@ -893,6 +989,81 @@ export async function getAuditLogs(
     if (!response.success || !response.data) {
       throw {
         message: response.message || "Failed to fetch audit logs",
+      } as ApiError;
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * User Insights interface
+ */
+export interface UserInsights {
+  user: {
+    id: number;
+    username: string;
+    email: string;
+    fullName?: string;
+    role: string;
+    isActive: boolean;
+    lastLogin?: string;
+    createdAt: string;
+  };
+  insights: {
+    engagementScore: number;
+    devices: {
+      total: number;
+      connected: number;
+      recent: Array<{
+        id: number;
+        deviceId: string;
+        deviceName?: string;
+        status: string;
+        lastSeen?: string;
+      }>;
+    };
+    messages: {
+      total: number;
+      last7Days: number;
+      last30Days: number;
+      outgoing: number;
+      incoming: number;
+      failed: number;
+      successRate: number;
+      recent: Array<{
+        id: number;
+        toNumber?: string;
+        messageType: string;
+        status: string;
+        direction: string;
+        timestamp: string;
+      }>;
+    };
+    contacts: {
+      total: number;
+    };
+    groups: {
+      total: number;
+    };
+  };
+  timestamp: string;
+}
+
+/**
+ * Get user insights and analytics (Admin only)
+ */
+export async function getUserInsights(userId: number): Promise<UserInsights> {
+  try {
+    const response = await get<UserInsights>(
+      `/admin/users/${userId}/insights`
+    );
+
+    if (!response.success || !response.data) {
+      throw {
+        message: response.message || "Failed to fetch user insights",
       } as ApiError;
     }
 

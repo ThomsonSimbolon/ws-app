@@ -7,6 +7,7 @@ import DeviceFilters from './DeviceFilters';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import DestructiveActionModal from './ui/DestructiveActionModal';
+import DeviceHealthCard from './DeviceHealthCard';
 import { useDestructiveAction } from '@/hooks/useDestructiveAction';
 
 export default function DeviceMonitoring() {
@@ -23,6 +24,9 @@ export default function DeviceMonitoring() {
   // Local state for modal management
   const [actionType, setActionType] = useState<'disconnect' | 'delete' | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+  
+  // Health modal state
+  const [healthDeviceId, setHealthDeviceId] = useState<string | null>(null);
 
   // Import Hook & Modal
   const { execute: executeDisconnect, isLoading: isDisconnecting } = useDestructiveAction<string>({
@@ -127,6 +131,10 @@ export default function DeviceMonitoring() {
     setActionType('delete');
   };
 
+  const handleViewHealth = (deviceId: string) => {
+    setHealthDeviceId(deviceId);
+  };
+
   const confirmAction = () => {
       if (!selectedDevice || !actionType) return;
       
@@ -181,6 +189,7 @@ export default function DeviceMonitoring() {
           isLoading={loading}
           onDisconnect={handleDisconnectClick}
           onDelete={handleDeleteClick}
+          onViewHealth={handleViewHealth}
         />
         
          {pagination && pagination.totalPages > 1 && (
@@ -230,6 +239,72 @@ export default function DeviceMonitoring() {
             setSelectedDevice(null);
         }}
       />
+
+      {/* Health Modal */}
+      {healthDeviceId && (
+        <DeviceHealthModal 
+          deviceId={healthDeviceId}
+          onClose={() => setHealthDeviceId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Helper component to fetch and display device health
+function DeviceHealthModal({ deviceId, onClose }: { deviceId: string; onClose: () => void }) {
+  const [health, setHealth] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    const fetchHealth = async () => {
+      try {
+        const { getDeviceHealth } = await import('@/lib/adminService');
+        const data = await getDeviceHealth(deviceId);
+        setHealth(data);
+        setError('');
+      } catch (err: any) {
+        setError(err.message || 'Failed to fetch health data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHealth();
+  }, [deviceId]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-card rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-divider">
+          <h3 className="text-lg font-semibold text-text-primary">Device Health</h3>
+          <button 
+            onClick={onClose}
+            className="text-text-muted hover:text-text-primary transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="p-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : error ? (
+            <div className="text-center py-8 text-danger">{error}</div>
+          ) : health ? (
+            <DeviceHealthCard 
+              health={health}
+              onRefresh={() => {
+                setLoading(true);
+                import('@/lib/adminService').then(({ getDeviceHealth }) => {
+                  getDeviceHealth(deviceId).then(setHealth).finally(() => setLoading(false));
+                });
+              }}
+            />
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

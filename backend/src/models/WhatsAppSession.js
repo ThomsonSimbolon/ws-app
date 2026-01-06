@@ -21,6 +21,7 @@ const WhatsAppSession = sequelize.define(
     deviceId: {
       type: DataTypes.STRING(100),
       allowNull: true, // Nullable for backward compatibility during migration
+      unique: true, // Required for foreign key references from other tables
       field: "device_id",
       comment: "Unique device identifier for multi-device support",
     },

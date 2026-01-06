@@ -18,12 +18,14 @@ const Group = sequelize.define(
     },
     deviceId: {
       type: DataTypes.STRING(100),
-      allowNull: false,
+      allowNull: true, // Must allow NULL for ON DELETE SET NULL to work
       field: "device_id",
       references: {
         model: "whatsapp_sessions",
         key: "device_id",
       },
+      onDelete: "SET NULL",
+      onUpdate: "CASCADE",
     },
     subject: {
       type: DataTypes.STRING(255),

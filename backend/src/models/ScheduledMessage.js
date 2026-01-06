@@ -23,12 +23,14 @@ const ScheduledMessage = sequelize.define(
     // Let's store sessionId FK for consistency with Message model.
     sessionId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true, // Must allow NULL for ON DELETE SET NULL
       field: "session_id",
       references: {
         model: "whatsapp_sessions",
         key: "id",
       },
+      onDelete: "SET NULL",
+      onUpdate: "CASCADE",
     },
     // Store deviceId string as well for quick lookups if needed, 
     // or just rely on join. Message model doesn't store deviceId string.

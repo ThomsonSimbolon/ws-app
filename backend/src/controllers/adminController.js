@@ -1401,13 +1401,347 @@ const retryJob = async (req, res) => {
   }
 };
 
+/**
+ * Get device health metrics (Admin only)
+ * GET /api/admin/devices/:deviceId/health
+ */
+const getDeviceHealth = async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+
+    // Find device
+    const device = await WhatsAppSession.findOne({
+      where: { deviceId },
+      include: [
+        {
+          association: "user",
+          attributes: ["id", "username", "email", "fullName"],
+        },
+      ],
+    });
+
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: "Device not found",
+      });
+    }
+
+    // Calculate health metrics
+    const now = new Date();
+    const last24Hours = new Date(now - 24 * 60 * 60 * 1000);
+    const last7Days = new Date(now - 7 * 24 * 60 * 60 * 1000);
+
+    // Get message success rate for this device
+    const totalMessages = await Message.count({
+      where: {
+        sessionId: device.id,
+        direction: "outgoing",
+        timestamp: { [Op.gte]: last7Days },
+      },
+    });
+
+    const failedMessages = await Message.count({
+      where: {
+        sessionId: device.id,
+        direction: "outgoing",
+        status: "failed",
+        timestamp: { [Op.gte]: last7Days },
+      },
+    });
+
+    const messageSuccessRate = totalMessages > 0
+      ? ((totalMessages - failedMessages) / totalMessages) * 100
+      : 100;
+
+    // Calculate stuck duration (if in connecting or qr_required state)
+    let stuckDuration = null;
+    if (device.status === 'connecting' || device.status === 'qr_required') {
+      const updatedAt = new Date(device.updatedAt);
+      stuckDuration = Math.floor((now - updatedAt) / 1000 / 60); // minutes
+    }
+
+    // Calculate last seen duration
+    let lastSeenMinutes = null;
+    if (device.lastSeen) {
+      lastSeenMinutes = Math.floor((now - new Date(device.lastSeen)) / 1000 / 60);
+    }
+
+    // Calculate uptime (simplified - based on status history from audit logs, if available)
+    // For now, use a simple connected vs total time estimate
+    let uptime7d = device.status === 'connected' ? 95 : 50; // Placeholder
+    
+    // Count session restarts in last 24h (from audit logs if available)
+    const { AdminActionLog } = require("../models");
+    let sessionRestarts24h = 0;
+    try {
+      sessionRestarts24h = await AdminActionLog.count({
+        where: {
+          targetType: "device",
+          targetId: deviceId,
+          action: { [Op.or]: ["disconnect_device", "connect_device"] },
+          createdAt: { [Op.gte]: last24Hours },
+        },
+      });
+    } catch (e) {
+      // AdminActionLog might not have all events, fallback to 0
+      sessionRestarts24h = 0;
+    }
+
+    // Determine overall health status
+    let healthStatus = 'healthy';
+    const alerts = [];
+
+    // Check for critical conditions
+    if (device.status === 'disconnected') {
+      healthStatus = 'warning';
+      alerts.push({ type: 'warning', message: 'Device is disconnected' });
+    }
+
+    if (stuckDuration && stuckDuration > 30) {
+      healthStatus = 'critical';
+      alerts.push({ type: 'danger', message: `Stuck in ${device.status} for ${stuckDuration} minutes` });
+    } else if (stuckDuration && stuckDuration > 5) {
+      healthStatus = 'warning';
+      alerts.push({ type: 'warning', message: `In ${device.status} state for ${stuckDuration} minutes` });
+    }
+
+    if (lastSeenMinutes && lastSeenMinutes > 60 && device.status === 'connected') {
+      healthStatus = 'warning';
+      alerts.push({ type: 'warning', message: 'Session may be stale (no activity for 1+ hour)' });
+    }
+
+    if (messageSuccessRate < 70) {
+      healthStatus = 'critical';
+      alerts.push({ type: 'danger', message: `Low message delivery rate: ${messageSuccessRate.toFixed(1)}%` });
+    } else if (messageSuccessRate < 90) {
+      healthStatus = 'warning';
+      alerts.push({ type: 'warning', message: `Message delivery rate: ${messageSuccessRate.toFixed(1)}%` });
+    }
+
+    if (sessionRestarts24h > 5) {
+      healthStatus = healthStatus === 'critical' ? 'critical' : 'warning';
+      alerts.push({ type: 'warning', message: `${sessionRestarts24h} reconnections in last 24h` });
+    }
+
+    // Calculate overall score (0-100)
+    let overallScore = 100;
+    if (device.status !== 'connected') overallScore -= 30;
+    if (stuckDuration > 5) overallScore -= 20;
+    if (messageSuccessRate < 90) overallScore -= (100 - messageSuccessRate) * 0.3;
+    if (sessionRestarts24h > 2) overallScore -= sessionRestarts24h * 3;
+    overallScore = Math.max(0, Math.min(100, overallScore));
+
+    res.json({
+      success: true,
+      data: {
+        deviceId: device.deviceId,
+        deviceName: device.deviceName,
+        phoneNumber: device.phoneNumber ? 
+          device.phoneNumber.substring(0, 4) + '****' + device.phoneNumber.slice(-4) : null,
+        owner: device.user ? {
+          id: device.user.id,
+          username: device.user.username,
+          fullName: device.user.fullName,
+        } : null,
+        health: {
+          overallScore: Math.round(overallScore),
+          status: healthStatus,
+          metrics: {
+            uptime7d: uptime7d,
+            messageSuccessRate: parseFloat(messageSuccessRate.toFixed(1)),
+            sessionRestarts24h: sessionRestarts24h,
+            stuckDuration: stuckDuration,
+            lastSeenMinutes: lastSeenMinutes,
+          },
+          current: {
+            status: device.status,
+            isActive: device.isActive,
+            lastSeen: device.lastSeen,
+          },
+          alerts: alerts,
+        },
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error("Admin get device health error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get device health",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/**
+ * Get user insights and analytics (Admin only)
+ * GET /api/admin/users/:userId/insights
+ */
+const getUserInsights = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findByPk(userId, {
+      attributes: ["id", "username", "email", "fullName", "role", "isActive", "lastLogin", "createdAt"],
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const now = new Date();
+    const last7Days = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const last30Days = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+    // Device stats
+    const totalDevices = await WhatsAppSession.count({
+      where: { userId: user.id },
+    });
+
+    const connectedDevices = await WhatsAppSession.count({
+      where: { userId: user.id, status: "connected", isActive: true },
+    });
+
+    const devices = await WhatsAppSession.findAll({
+      where: { userId: user.id },
+      attributes: ["id", "deviceId", "deviceName", "phoneNumber", "status", "isActive", "lastSeen", "createdAt"],
+      order: [["lastSeen", "DESC"]],
+      limit: 5,
+    });
+
+    // Message stats
+    const totalMessages = await Message.count({
+      where: { userId: user.id },
+    });
+
+    const messagesLast7Days = await Message.count({
+      where: { userId: user.id, timestamp: { [Op.gte]: last7Days } },
+    });
+
+    const messagesLast30Days = await Message.count({
+      where: { userId: user.id, timestamp: { [Op.gte]: last30Days } },
+    });
+
+    const outgoingMessages = await Message.count({
+      where: { userId: user.id, direction: "outgoing" },
+    });
+
+    const incomingMessages = await Message.count({
+      where: { userId: user.id, direction: "incoming" },
+    });
+
+    const failedMessages = await Message.count({
+      where: { userId: user.id, status: "failed" },
+    });
+
+    // Message success rate
+    const messageSuccessRate = outgoingMessages > 0
+      ? ((outgoingMessages - failedMessages) / outgoingMessages) * 100
+      : 100;
+
+    // Recent messages
+    const recentMessages = await Message.findAll({
+      where: { userId: user.id },
+      attributes: ["id", "toNumber", "messageType", "status", "direction", "timestamp"],
+      order: [["timestamp", "DESC"]],
+      limit: 10,
+    });
+
+    // Contact stats
+    const totalContacts = await Contact.count({
+      where: { userId: user.id },
+    });
+
+    // Group stats
+    const sessionIds = devices.map(d => d.id);
+    const totalGroups = sessionIds.length > 0 ? await Group.count({
+      where: { deviceId: { [Op.in]: devices.map(d => d.deviceId) } },
+    }) : 0;
+
+    // Calculate engagement score
+    let engagementScore = 0;
+    if (connectedDevices > 0) engagementScore += 30;
+    if (messagesLast7Days > 0) engagementScore += 30;
+    if (messagesLast7Days > 50) engagementScore += 20;
+    if (user.lastLogin && new Date(user.lastLogin) > last7Days) engagementScore += 20;
+    engagementScore = Math.min(100, engagementScore);
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          isActive: user.isActive,
+          lastLogin: user.lastLogin,
+          createdAt: user.createdAt,
+        },
+        insights: {
+          engagementScore,
+          devices: {
+            total: totalDevices,
+            connected: connectedDevices,
+            recent: devices.map(d => ({
+              id: d.id,
+              deviceId: d.deviceId,
+              deviceName: d.deviceName,
+              status: d.status,
+              lastSeen: d.lastSeen,
+            })),
+          },
+          messages: {
+            total: totalMessages,
+            last7Days: messagesLast7Days,
+            last30Days: messagesLast30Days,
+            outgoing: outgoingMessages,
+            incoming: incomingMessages,
+            failed: failedMessages,
+            successRate: parseFloat(messageSuccessRate.toFixed(1)),
+            recent: recentMessages.map(m => ({
+              id: m.id,
+              toNumber: m.toNumber ? m.toNumber.substring(0, 6) + '***' : null,
+              messageType: m.messageType,
+              status: m.status,
+              direction: m.direction,
+              timestamp: m.timestamp,
+            })),
+          },
+          contacts: {
+            total: totalContacts,
+          },
+          groups: {
+            total: totalGroups,
+          },
+        },
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error("Admin get user insights error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get user insights",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
 module.exports = {
   listUsers,
   getUserDetails,
+  getUserInsights,
   createUser,
   updateUser,
   deleteUser,
   listDevices,
+  getDeviceHealth,
   disconnectDevice,
   deleteDevice,
   listMessages,
@@ -1421,4 +1755,5 @@ module.exports = {
   resumeJob,
   retryJob,
 };
+
 

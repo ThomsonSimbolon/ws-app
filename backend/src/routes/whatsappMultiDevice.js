@@ -244,12 +244,41 @@ router.delete(
   whatsappMultiDeviceController.demoteAdmin
 );
 
-// Contacts Routes
+// Contacts Routes (from WhatsApp)
 router.get(
   "/devices/:deviceId/contacts",
   authenticateToken,
   requireUser,
   whatsappMultiDeviceController.getContacts
+);
+
+// User Contacts Routes (from Database - with tags)
+router.get(
+  "/contacts",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.getUserContacts
+);
+
+router.post(
+  "/contacts",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.saveContact
+);
+
+router.put(
+  "/contacts/:contactId/tags",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.updateContactTags
+);
+
+router.get(
+  "/tags",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.getUserTags
 );
 
 // Chat History Routes
@@ -289,6 +318,58 @@ router.get(
   whatsappMultiDeviceController.listScheduledMessages
 );
 
+// Cross-device scheduled messages list (all user's devices)
+router.get(
+  "/scheduled-messages",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.listAllScheduledMessages
+);
+
+// Cancel a scheduled message
+router.post(
+  "/scheduled-messages/:messageId/cancel",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.cancelScheduledMessage
+);
+
+// Message Template Routes (User)
+router.get(
+  "/templates",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.getTemplates
+);
+
+router.post(
+  "/templates",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.createTemplate
+);
+
+router.put(
+  "/templates/:templateId",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.updateTemplate
+);
+
+router.delete(
+  "/templates/:templateId",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.deleteTemplate
+);
+
+router.post(
+  "/templates/:templateId/use",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.useTemplate
+);
+
 // Statistics Routes (Admin Only)
 router.get(
   "/devices/:deviceId/statistics",
@@ -302,6 +383,14 @@ router.get(
   authenticateToken,
   requireAdmin, // Admin only - Daily statistics requires admin
   whatsappMultiDeviceController.getDailyActivity
+);
+
+// User Statistics Route (User only - personal stats)
+router.get(
+  "/user/statistics",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.getUserStatistics
 );
 
 module.exports = router;

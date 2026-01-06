@@ -3,18 +3,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AdminLayout from '@/components/layout/AdminLayout';
 import Card from '@/components/ui/Card';
+import Badge from '@/components/ui/Badge';
 import JobTable from '@/components/admin/JobTable';
 import JobFilters from '@/components/admin/JobFilters';
 import JobDetailModal from '@/components/admin/JobDetailModal';
-import { getJobs, getJobDetails, cancelJob, GetJobsParams, Job } from '@/lib/adminService';
+import { getJobs, getJobDetails, cancelJob, pauseJob, resumeJob, retryJob, GetJobsParams, Job } from '@/lib/adminService';
 import { ApiError } from '@/lib/api';
+import { useJobSSE, JobProgressData } from '@/hooks/useJobSSE';
 
 export default function JobsListPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [total, setTotal] = useState(0);
 
   // Filters
-  const [status, setStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | ''>('');
+  const [status, setStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'paused' | ''>('');
   const [type, setType] = useState<'send-text' | 'send-media' | ''>('');
 
   // Modal state
@@ -24,7 +26,31 @@ export default function JobsListPage() {
   // Loading & Error states
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isCancelling, setIsCancelling] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // SSE-based real-time job updates
+  const handleJobProgress = useCallback((progressData: JobProgressData) => {
+    setJobs(prevJobs => {
+      return prevJobs.map(job => {
+        if (job.id === progressData.jobId) {
+          return {
+            ...job,
+            status: progressData.status,
+            progress: progressData.progress,
+            startedAt: progressData.startedAt,
+            completedAt: progressData.completedAt,
+            error: progressData.error || undefined,
+          };
+        }
+        return job;
+      });
+    });
+  }, []);
+
+  const { connectionStatus } = useJobSSE({
+    onJobProgress: handleJobProgress,
+    enabled: true,
+  });
 
   // Fetch jobs
   const fetchJobs = useCallback(async () => {
@@ -54,12 +80,14 @@ export default function JobsListPage() {
     fetchJobs();
   }, [fetchJobs]);
 
-  // Auto-refresh polling (every 5 seconds)
+  // Fallback polling only if SSE is disconnected
   useEffect(() => {
+    // Only poll if SSE is disconnected and there are active jobs
+    if (connectionStatus === 'connected') return;
+
     const interval = setInterval(() => {
-      // Only refresh if there are processing or queued jobs
       const hasActiveJobs = jobs.some(
-        (job) => job.status === 'processing' || job.status === 'queued'
+        (job) => job.status === 'processing' || job.status === 'queued' || job.status === 'paused'
       );
       if (hasActiveJobs) {
         fetchJobs();
@@ -67,7 +95,7 @@ export default function JobsListPage() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [jobs, fetchJobs]);
+  }, [jobs, fetchJobs, connectionStatus]);
 
   const handleViewDetail = async (job: Job) => {
     try {
@@ -86,16 +114,59 @@ export default function JobsListPage() {
     }
 
     try {
-      setIsCancelling(jobId);
+      setActionLoading(jobId);
       setError(null);
       await cancelJob(jobId);
-      // Refresh jobs list
+      // SSE will update the status, but also refresh list to ensure consistency
       await fetchJobs();
     } catch (err) {
       const apiError = err as ApiError;
       setError(apiError.message || 'Failed to cancel job');
     } finally {
-      setIsCancelling(null);
+      setActionLoading(null);
+    }
+  };
+
+  const handlePause = async (jobId: string) => {
+    try {
+      setActionLoading(jobId);
+      setError(null);
+      await pauseJob(jobId);
+      // SSE will update the status
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to pause job');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleResume = async (jobId: string) => {
+    try {
+      setActionLoading(jobId);
+      setError(null);
+      await resumeJob(jobId);
+      // SSE will update the status
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to resume job');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRetry = async (jobId: string) => {
+    try {
+      setActionLoading(jobId);
+      setError(null);
+      const result = await retryJob(jobId);
+      // Refresh jobs to show the new retry job
+      await fetchJobs();
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to retry job');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -108,9 +179,17 @@ export default function JobsListPage() {
     <AdminLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-text-primary mb-2">Job Queue Management</h1>
-          <p className="text-text-secondary">Monitor and manage bulk messaging jobs</p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-text-primary mb-2">Job Queue Management</h1>
+            <p className="text-text-secondary">Monitor and manage bulk messaging jobs</p>
+          </div>
+          {/* SSE Connection Status */}
+          <Badge 
+            variant={connectionStatus === 'connected' ? 'success' : connectionStatus === 'connecting' ? 'warning' : 'info'}
+          >
+            {connectionStatus === 'connected' ? '● Live' : connectionStatus === 'connecting' ? '○ Connecting...' : '○ Polling'}
+          </Badge>
         </div>
 
         {/* Error Message */}
@@ -134,7 +213,10 @@ export default function JobsListPage() {
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-text-muted">
               Total: {total} jobs
-              {jobs.some((j) => j.status === 'processing' || j.status === 'queued') && (
+              {connectionStatus === 'connected' && (
+                <span className="ml-2 text-success">(Real-time updates active)</span>
+              )}
+              {connectionStatus !== 'connected' && jobs.some((j) => j.status === 'processing' || j.status === 'queued') && (
                 <span className="ml-2 text-primary">(Auto-refreshing...)</span>
               )}
             </p>
@@ -144,6 +226,9 @@ export default function JobsListPage() {
             isLoading={isLoading}
             onViewDetail={handleViewDetail}
             onCancel={handleCancel}
+            onPause={handlePause}
+            onResume={handleResume}
+            onRetry={handleRetry}
           />
         </Card>
 
