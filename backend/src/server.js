@@ -53,29 +53,41 @@ const createTablesIfNotExist = async () => {
       (table) => !existingTables.includes(table)
     );
 
-    if (missingTables.length > 0) {
-      logger.info(`🚧 Missing tables detected: ${missingTables.join(", ")}`);
-      logger.info("🔨 Creating missing tables...");
+    const shouldSync = missingTables.length > 0 || process.env.AUTO_UPDATE_SCHEMA === 'true';
 
-      // Sync database - akan membuat tabel yang belum ada
+    if (shouldSync) {
+      if (missingTables.length > 0) {
+        logger.info(`🚧 Missing tables detected: ${missingTables.join(", ")}`);
+        logger.info("🔨 Creating missing tables...");
+      }
+
+      if (process.env.AUTO_UPDATE_SCHEMA === 'true') {
+        logger.info(`🔄 Schema update enabled: true`);
+      }
+
+      // Sync database - akan membuat tabel yang belum ada dan update structure jika diaktifkan
       await sequelize.sync({
-        alter: false, // Jangan ubah struktur tabel yang sudah ada
+        alter: process.env.AUTO_UPDATE_SCHEMA === 'true', // Update struktur tabel jika diaktifkan via .env
         force: false, // Jangan hapus tabel yang sudah ada
       });
 
-      logger.info("✅ All required tables have been created successfully!");
+      if (missingTables.length > 0) {
+        logger.info("✅ All required tables have been created successfully!");
 
-      // Verify tables were created
-      const [newResults] = await sequelize.query("SHOW TABLES");
-      const newExistingTables = newResults.map((row) => Object.values(row)[0]);
+        // Verify tables were created
+        const [newResults] = await sequelize.query("SHOW TABLES");
+        const newExistingTables = newResults.map((row) => Object.values(row)[0]);
 
-      const stillMissing = requiredTables.filter(
-        (table) => !newExistingTables.includes(table)
-      );
-      if (stillMissing.length === 0) {
-        logger.info("✅ Database setup completed successfully!");
+        const stillMissing = requiredTables.filter(
+          (table) => !newExistingTables.includes(table)
+        );
+        if (stillMissing.length === 0) {
+          logger.info("✅ Database setup completed successfully!");
+        } else {
+          logger.error(`❌ Failed to create tables: ${stillMissing.join(", ")}`);
+        }
       } else {
-        logger.error(`❌ Failed to create tables: ${stillMissing.join(", ")}`);
+        logger.info("✅ Database schema sync completed.");
       }
     } else {
       logger.info("✅ All required tables already exist. No action needed.");
