@@ -32,7 +32,7 @@ interface InputProps {
   autoComplete?: string;
 }
 
-export default function Input({
+const Input = React.forwardRef<HTMLInputElement, InputProps>(({
   type = 'text',
   name,
   value,
@@ -46,7 +46,7 @@ export default function Input({
   onChange,
   onBlur,
   autoComplete,
-}: InputProps) {
+}, ref) => {
   // Base styles (using CSS variables)
   const baseStyles = 'w-full bg-card border rounded-lg transition-all duration-200 outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-app disabled:opacity-50 disabled:cursor-not-allowed';
   
@@ -78,6 +78,7 @@ export default function Input({
         </label>
       )}
       <input
+        ref={ref}
         type={type}
         id={name}
         name={name}
@@ -110,5 +111,9 @@ export default function Input({
       )}
     </div>
   );
-}
+});
+
+Input.displayName = 'Input';
+
+export default Input;
 

@@ -152,6 +152,8 @@ function SendMessageContent() {
           type: 'text',
         });
       } else {
+        if (!selectedFile) return;
+        
         let mediaType = 'document';
         if (selectedFile.type.startsWith('image/')) {
           mediaType = 'image';

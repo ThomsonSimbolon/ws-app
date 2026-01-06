@@ -31,6 +31,33 @@ Backend service untuk WhatsApp Business dengan dukungan multi-device menggunakan
 
 ## � Update Terbaru
 
+### Versi 1.2.0 (Januari 2026)
+
+#### Fitur Baru & Improvement
+
+1. **User Control & Security**
+
+   - **Lock/Unlock Account**: Admin dapat mengunci/membuka akses user.
+   - **Reset Password**: Admin dapat mereset password user.
+   - **Audit Logging**: Sistem mencatat setiap aksi krusial admin (Create/Update/Delete) untuk keamanan dan tracebility.
+
+2. **Advanced Job Control**
+
+   - **Pause/Resume Jobs**: Menghentikan sementara dan melanjutkan proses bulk messaging.
+   - **Retry Failed Jobs**: Kemampuan untuk mengulang job yang gagal atau partial.
+
+3. **Admin Dashboard Enhancements**
+
+   - **Action Logs Viewer**: UI baru untuk melihat admin logs.
+   - **Enhanced User Management**: UI untuk pengelolaan user yang lebih lengkap.
+
+#### Bug Fixes & Optimizations
+
+- Improved job queue reliability.
+- Fixes in device connection flow.
+
+---
+
 ### Versi 1.1.0 (Januari 2026)
 
 #### Fitur Baru & Improvement
@@ -624,9 +651,17 @@ Menangani operasi WhatsApp multi-device:
 Menangani operasi admin:
 
 - User Management: `listUsers()`, `createUser()`, `getUserDetails()`, `updateUser()`, `deleteUser()`
-- Device Management: `listDevices()` (all devices)
+- Device Management: `listDevices()` (all devices), `disconnectDevice()`, `deleteDevice()`
 - Message Management: `listMessages()` (all messages)
+- Job Control: `listJobs()`, `getJobDetails()`, `cancelJob()`, `pauseJob()`, `resumeJob()`, `retryJob()`
 - Statistics: `getStats()` (global statistics)
+
+#### `auditController.js` (NEW)
+
+Menangani sistem audit trail:
+
+- `listLogs()` - List admin action logs (Create/Update/Delete actions)
+- `logAction()` - Helper untuk mencatat aktivitas admin
 
 ### 2. Services
 
@@ -1295,6 +1330,10 @@ GET /api/events?token=<token>
 | GET    | `/jobs`               | List semua jobs                                  | ✅   | Admin |
 | GET    | `/jobs/:jobId`        | Get job detail                                   | ✅   | Admin |
 | POST   | `/jobs/:jobId/cancel` | Cancel job (admin)                               | ✅   | Admin |
+| POST   | `/jobs/:jobId/pause`  | Pause job                                        | ✅   | Admin |
+| POST   | `/jobs/:jobId/resume` | Resume job                                       | ✅   | Admin |
+| POST   | `/jobs/:jobId/retry`  | Retry job                                        | ✅   | Admin |
+| GET    | `/logs`               | Get audit logs                                   | ✅   | Admin |
 | GET    | `/stats`              | Get global statistics                            | ✅   | Admin |
 
 ### Legacy Endpoints (Backward Compatibility)
@@ -1459,6 +1498,8 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
    ├── Create New User (POST /api/admin/users)
    ├── View User Details (GET /api/admin/users/:userId)
    ├── Update User (PUT /api/admin/users/:userId)
+   │   ├── Reset Password functionality
+   │   └── Lock/Unlock Account (isActive toggle)
    ├── Delete User (DELETE /api/admin/users/:userId)
    └── View User Devices & Statistics
 
@@ -1490,7 +1531,7 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
    ├── Promote/Demote Admins
    └── Create & Execute Group Media Jobs
 
-6. BULK MESSAGING & JOB QUEUE
+6. BULK MESSAGING & ADVANCED JOB CONTROL
    ├── Create Bulk Text Job (POST /api/whatsapp-multi-device/devices/:deviceId/jobs/send-text)
    │   ├── Specify multiple recipients
    │   ├── Set message delay (default 3s)
@@ -1498,11 +1539,22 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
    ├── Create Bulk Media Job
    ├── Create Group Media Job (Bulk)
    ├── Monitor All Jobs (GET /api/admin/jobs)
-   ├── View Job Details & Progress
-   ├── Cancel Any Job
+   ├── Job Control Actions:
+   │   ├── Cancel Job
+   │   ├── Pause Job (POST /api/admin/jobs/:id/pause)
+   │   ├── Resume Job (POST /api/admin/jobs/:id/resume)
+   │   └── Retry Job (POST /api/admin/jobs/:id/retry)
    └── Receive Job Completion Notifications
 
-7. ANALYTICS & STATISTICS
+7. AUDIT & MONITORING
+   ├── View Audit Logs (GET /api/admin/logs)
+   │   ├── Filter by Admin, Action, Target
+   │   └── Track sensitive actions (user delete, device wipe, etc.)
+   └── System Monitoring
+       ├── Global Statistics (GET /api/admin/stats)
+       └── Health Check
+
+8. ANALYTICS & STATISTICS
    ├── Global Statistics (GET /api/admin/stats)
    │   ├── Total devices online
    │   ├── Total messages sent/received
@@ -1517,19 +1569,6 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
        ├── Activity per user
        ├── Device usage statistics
        └── Message patterns
-
-8. MONITORING & ADMINISTRATION
-   ├── Health Check (GET /api/health)
-   ├── View System Logs
-   ├── Monitor Real-time Events
-   ├── Track SSE Connections
-   ├── System Performance Metrics
-   └── Admin Dashboard View
-       ├── User Management Section
-       ├── Device Management Section
-       ├── Message Management Section
-       ├── Statistics Section
-       └── System Status Section
 
 9. SSE EVENTS (Real-time Admin Notifications)
    ├── User Account Changes
@@ -1551,6 +1590,8 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
    - Manage user information
    - Delete user accounts
    - View user activity
+   - Lock/Unlock User Account
+   - Reset User Password
 
 2. Device Creation & Global Management
    - Create devices for any user
@@ -1564,6 +1605,7 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
    - Schedule bulk messages
    - Monitor all jobs globally
    - Cancel any job
+   - Pause/Resume/Retry Jobs
 
 4. Group Management
    - Create groups on any device
@@ -1582,6 +1624,7 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
 
 6. System Administration
    - View system logs
+   - View Audit Logs
    - Monitor health status
    - Admin panel access
    - User list & management

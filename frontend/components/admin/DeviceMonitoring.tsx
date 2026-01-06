@@ -6,6 +6,8 @@ import DeviceTable from './DeviceTable';
 import DeviceFilters from './DeviceFilters';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import DestructiveActionModal from './ui/DestructiveActionModal';
+import { useDestructiveAction } from '@/hooks/useDestructiveAction';
 
 export default function DeviceMonitoring() {
   const [devices, setDevices] = useState<Device[]>([]);
@@ -17,6 +19,57 @@ export default function DeviceMonitoring() {
   const [userIdFilter, setUserIdFilter] = useState<number | ''>('');
   const [isActiveFilter, setIsActiveFilter] = useState<boolean | ''>('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Local state for modal management
+  const [actionType, setActionType] = useState<'disconnect' | 'delete' | null>(null);
+  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+
+  // Import Hook & Modal
+  const { execute: executeDisconnect, isLoading: isDisconnecting } = useDestructiveAction<string>({
+    action: disconnectDevice,
+    onSuccess: () => {
+      fetchDevices();
+      setActionType(null);
+      setSelectedDevice(null);
+    },
+    onError: (err: unknown) => {
+        let msg = 'Failed to disconnect';
+        if (err instanceof Error) msg = err.message;
+        else if (typeof err === 'object' && err !== null && 'message' in err) msg = String((err as Record<string, unknown>).message);
+        alert(msg);
+    },
+    validate: (deviceId) => {
+        // Find device and check status (Optimistic validation)
+        const device = devices.find(d => d.deviceId === deviceId);
+        if (device && device.status === 'disconnected') {
+            return `Device ${device.deviceName} is already disconnected.`;
+        }
+        return null;
+    }
+  });
+
+  const { execute: executeDelete, isLoading: isDeleting } = useDestructiveAction<string>({
+    action: deleteDevice,
+    onSuccess: () => {
+      fetchDevices();
+      setActionType(null);
+      setSelectedDevice(null);
+    },
+    onError: (err: unknown) => {
+        let msg = 'Failed to delete';
+        if (err instanceof Error) msg = err.message;
+        else if (typeof err === 'object' && err !== null && 'message' in err) msg = String((err as Record<string, unknown>).message);
+        alert(msg);
+    },
+    validate: (deviceId) => {
+        const device = devices.find(d => d.deviceId === deviceId);
+        // Enforce Disconnect before Delete rule
+        if (device && device.status === 'connected') {
+            return `Please disconnect ${device.deviceName} before deleting it.`;
+        }
+        return null;
+    }
+  });
 
   const fetchDevices = async () => {
     setLoading(true);
@@ -32,56 +85,67 @@ export default function DeviceMonitoring() {
       setDevices(response.devices);
       setPagination(response.pagination);
       setError('');
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch devices');
+    } catch (err: unknown) {
+        let msg = 'Failed to fetch devices';
+        if (err instanceof Error) msg = err.message;
+        else if (typeof err === 'object' && err !== null && 'message' in err) msg = String((err as Record<string, unknown>).message);
+        setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
+
+
+
   useEffect(() => {
     fetchDevices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, statusFilter, userIdFilter, isActiveFilter]);
 
-  // Handle search with debounce could be added here, but for now we trigger on enter or via button if we had one
+  // Handle search with debounce
   useEffect(() => {
-     // Simple debounce effect for search
      const timer = setTimeout(() => {
          fetchDevices();
      }, 500);
      return () => clearTimeout(timer);
+     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
-
-  const handleDisconnect = async (deviceId: string) => {
-    if (!confirm('Are you sure you want to disconnect this device? Session will be terminated.')) return;
-    try {
-      await disconnectDevice(deviceId);
-      fetchDevices(); // Refresh list
-    } catch (err: any) {
-      alert(err.message || 'Failed to disconnect device');
-    }
+  // Handler replacements - Open Modals instead of confirm()
+  const handleDisconnectClick = (deviceId: string) => {
+    const device = devices.find(d => d.deviceId === deviceId);
+    if (!device) return;
+    setSelectedDevice(device);
+    setActionType('disconnect');
   };
 
-  const handleDelete = async (deviceId: string) => {
-    if (!confirm('Are you sure you want to PERMANENTLY DELETE this device? This action is irreversible.')) return;
-    try {
-      await deleteDevice(deviceId);
-      fetchDevices(); // Refresh list
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete device');
-    }
+  const handleDeleteClick = (deviceId: string) => {
+    const device = devices.find(d => d.deviceId === deviceId);
+    if (!device) return;
+    setSelectedDevice(device);
+    setActionType('delete');
   };
 
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage);
+  const confirmAction = () => {
+      if (!selectedDevice || !actionType) return;
+      
+      if (actionType === 'disconnect') {
+          executeDisconnect(selectedDevice.deviceId);
+      } else if (actionType === 'delete') {
+          executeDelete(selectedDevice.deviceId);
+      }
   };
-  
+
   const handleResetFilters = () => {
     setStatusFilter('');
     setUserIdFilter('');
     setIsActiveFilter('');
     setSearchQuery('');
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
   };
 
   return (
@@ -115,11 +179,10 @@ export default function DeviceMonitoring() {
         <DeviceTable 
           devices={devices}
           isLoading={loading}
-          onDisconnect={handleDisconnect}
-          onDelete={handleDelete}
+          onDisconnect={handleDisconnectClick}
+          onDelete={handleDeleteClick}
         />
         
-        {/* Pagination - Reuse or create shared pagination components later */}
          {pagination && pagination.totalPages > 1 && (
           <div className="flex items-center justify-between p-4 border-t border-divider">
             <div className="text-sm text-text-muted">
@@ -146,6 +209,27 @@ export default function DeviceMonitoring() {
           </div>
         )}
       </Card>
+
+      {/* Destructive Action Modal */}
+      <DestructiveActionModal
+        isOpen={!!actionType}
+        title={actionType === 'disconnect' ? 'Disconnect Device' : 'Delete Device Permanently'}
+        targetId={selectedDevice ? `${selectedDevice.deviceName} (${selectedDevice.deviceId})` : ''}
+        description={
+            actionType === 'disconnect' 
+            ? 'Are you sure you want to disconnect this device? The session will be terminated and the user will need to scan the QR code again.' 
+            : 'This action cannot be undone. All session history and logs associated with this device will be permanently removed.'
+        }
+        confirmKeyword={actionType === 'delete' ? 'DELETE' : undefined}
+        confirmText={actionType === 'disconnect' ? 'Disconnect' : 'Delete Device'}
+        variant="danger"
+        isLoading={isDisconnecting || isDeleting}
+        onConfirm={confirmAction}
+        onCancel={() => {
+            setActionType(null);
+            setSelectedDevice(null);
+        }}
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
-# Admin Dashboard Template
+# WhatsApp Service - Frontend Admin Dashboard
 
-A modern, production-ready admin dashboard template built with **Next.js 16**, **React 19**, **TypeScript**, and **Tailwind CSS v4**. Features a complete theming system, Redux state management, and polished UX with skeleton loaders and micro-interactions.
+A modern, production-ready admin dashboard for WhatsApp Multi-Device Management built with **Next.js 16**, **React 19**, **TypeScript**, and **Tailwind CSS v4**. Features comprehensive device management, messaging tools, role-based access control (Admin/User), and real-time updates via SSE.
 
 ![Admin Dashboard](https://img.shields.io/badge/Next.js-16.1.1-black?style=flat&logo=next.js)
 ![React](https://img.shields.io/badge/React-19.2.3-blue?style=flat&logo=react)
@@ -20,12 +20,13 @@ A modern, production-ready admin dashboard template built with **Next.js 16**, *
 ## ✨ Features
 
 ### Core Features
+- ✅ **WhatsApp Multi-Device**: Manage multiple WhatsApp sessions/devices per user
+- ✅ **Role-Based Access**: Specialized views and features for Admins and Users
+- ✅ **Real-time Updates**: Server-Sent Events (SSE) for device status and QR codes
 - ✅ **Modern Tech Stack**: Next.js 16 (App Router), React 19, TypeScript
 - ✅ **Tailwind CSS v4**: Latest CSS-first configuration with `@theme` directive
 - ✅ **Dark/Light Mode**: Fully functional theme toggle with localStorage persistence
 - ✅ **Redux Toolkit**: Global state management for dashboard data and theme
-- ✅ **Responsive Design**: Mobile-first, tablet, and desktop breakpoints
-- ✅ **Production-Ready**: Optimized build, no errors, clean console
 
 ### UI/UX Features
 - 🎨 **Custom Color System**: Orange primary color (#FF6A00) with full theme support
@@ -36,10 +37,17 @@ A modern, production-ready admin dashboard template built with **Next.js 16**, *
 - 📜 **Custom Scrollbar**: Theme-aware scrollbar for dark/light modes
 
 ### Pages
-1. **Dashboard** (`/dashboard`) - Main overview with stats and charts
-2. **Analytics** (`/analytics`) - Data visualization page
-3. **Settings** (`/settings`) - User preferences and configuration
-4. **Landing** (`/`) - Welcome page with navigation
+1. **Dashboard** (`/dashboard`) - Analytics and device overview
+2. **Devices** (`/devices`) - WhatsApp device management (Connect/Disconnect)
+3. **Send Message** (`/send-message`) - Send text and media messages
+4. **Chat History** (`/chat-history`) - View message history
+5. **Contacts** (`/contacts`) - Manage authorized contacts
+6. **Scheduled Messages** (`/schedule-message`) - Job queue management
+7. **Admin Pages** (Admin Only):
+   - **User Management** (`/admin/users`)
+   - **Audit Logs** (`/admin/logs`)
+   - **Global Stats** (`/admin/stats`)
+   - **Job Control** (`/admin/jobs`)
 
 ---
 
@@ -579,16 +587,12 @@ Change port in `package.json`:
 
 ## 📝 To-Do / Future Enhancements
 
-- [ ] Add real chart library (Chart.js, Recharts)
-- [ ] Implement authentication (NextAuth.js)
-- [ ] Add API integration examples
+- [ ] Add real chart library (Chart.js, Recharts) - *In Progress*
 - [ ] Create component Storybook
 - [ ] Add E2E tests (Playwright)
-- [ ] Implement data tables with sorting/filtering
-- [ ] Add more dashboard widgets
-- [ ] Create admin user management page
+- [ ] Implement data tables with sorting/filtering - *In Progress*
 - [ ] Add notification system
-- [ ] Implement dark/light/auto theme
+- [ ] Implement dark/light/auto theme - *Done*
 
 ---
 
