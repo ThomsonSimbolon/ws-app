@@ -3,6 +3,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
+const path = require("path");
 require("dotenv").config();
 
 const logger = require("./utils/logger");
@@ -51,6 +52,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Response formatter middleware (harus setelah body parser)
 app.use(responseFormatter);
+
+// Static file serving for uploads (profile photos, media, etc.)
+const uploadDir = process.env.UPLOAD_PATH || "./uploads";
+app.use("/uploads", express.static(path.resolve(uploadDir)));
 
 // Routes
 app.use("/api/auth", authRoutes);

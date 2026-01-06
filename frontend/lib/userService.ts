@@ -104,6 +104,9 @@ export interface Profile {
   username: string;
   email: string;
   fullName?: string;
+  profilePhoto?: string;
+  phoneNumber?: string;
+  bio?: string;
   role: "admin" | "user";
   isActive: boolean;
   createdAt: string;
@@ -115,6 +118,8 @@ export interface UpdateProfileRequest {
   email?: string;
   fullName?: string;
   password?: string;
+  phoneNumber?: string;
+  bio?: string;
 }
 
 export interface ProfileResponse {
@@ -605,6 +610,44 @@ export async function updateProfile(
     }
 
     return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Upload profile photo
+ */
+export async function uploadProfilePhoto(
+  file: File
+): Promise<{ user: Profile; photoUrl: string }> {
+  try {
+    const formData = new FormData();
+    formData.append("photo", file);
+
+    const API_BASE_URL =
+      process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+    const response = await fetch(`${API_BASE_URL}/auth/profile/photo`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || "Failed to upload profile photo",
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result.data;
   } catch (error) {
     throw error;
   }

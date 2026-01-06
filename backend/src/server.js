@@ -45,6 +45,9 @@ const createTablesIfNotExist = async () => {
       "messages",
       "contacts",
       "scheduled_messages",
+      "groups",
+      "statistics",
+      "admin_action_logs",
     ];
     const missingTables = requiredTables.filter(
       (table) => !existingTables.includes(table)

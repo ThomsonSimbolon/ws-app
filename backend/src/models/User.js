@@ -54,6 +54,20 @@ const User = sequelize.define(
       type: DataTypes.DATE,
       field: "last_login",
     },
+    profilePhoto: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      field: "profile_photo",
+    },
+    phoneNumber: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      field: "phone_number",
+    },
+    bio: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
   },
   {
     tableName: "users",

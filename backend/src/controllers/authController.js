@@ -183,11 +183,20 @@ const getProfile = async (req, res) => {
 
 const updateProfile = async (req, res) => {
   try {
-    const { fullName, username } = req.body;
+    const { fullName, username, email, password, phoneNumber, bio } = req.body;
     const userId = req.user.id;
 
+    // Get current user
+    const currentUser = await User.findByPk(userId);
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
     // Check if username is taken by another user
-    if (username) {
+    if (username && username !== currentUser.username) {
       const existingUser = await User.findOne({
         where: {
           username,
@@ -203,21 +212,98 @@ const updateProfile = async (req, res) => {
       }
     }
 
-    // Update user
-    await User.update({ fullName, username }, { where: { id: userId } });
+    // Check if email is taken by another user
+    if (email && email !== currentUser.email) {
+      const existingEmail = await User.findOne({
+        where: {
+          email,
+          id: { $ne: userId },
+        },
+      });
 
+      if (existingEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "Email already taken",
+        });
+      }
+    }
+
+    // Build update object (only include defined fields)
+    const updateData = {};
+    if (fullName !== undefined) updateData.fullName = fullName;
+    if (username !== undefined) updateData.username = username;
+    if (email !== undefined) updateData.email = email;
+    if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
+    if (bio !== undefined) updateData.bio = bio;
+    
+    // Handle password update (will be hashed by beforeUpdate hook)
+    if (password && password.length >= 6) {
+      updateData.password = password;
+    }
+
+    // Update user
+    await currentUser.update(updateData);
+
+    // Fetch updated user without password
     const updatedUser = await User.findByPk(userId);
+
+    logger.info(`Profile updated for user: ${updatedUser.email}`);
 
     res.json({
       success: true,
       message: "Profile updated successfully",
-      data: { user: updatedUser },
+      data: { user: updatedUser.toJSON() },
     });
   } catch (error) {
     logger.error("Update profile error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to update profile",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+const uploadProfilePhoto = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded",
+      });
+    }
+
+    // Build the URL path for the uploaded file
+    const relativePath = req.file.path.replace(/\\/g, "/");
+    const photoUrl = `/uploads/${relativePath.split("uploads/")[1]}`;
+
+    // Update user profile photo
+    await User.update(
+      { profilePhoto: photoUrl },
+      { where: { id: userId } }
+    );
+
+    const updatedUser = await User.findByPk(userId);
+
+    logger.info(`Profile photo updated for user: ${updatedUser.email}`);
+
+    res.json({
+      success: true,
+      message: "Profile photo updated successfully",
+      data: {
+        user: updatedUser.toJSON(),
+        photoUrl,
+      },
+    });
+  } catch (error) {
+    logger.error("Upload profile photo error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to upload profile photo",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -287,5 +373,6 @@ module.exports = {
   login,
   getProfile,
   updateProfile,
+  uploadProfilePhoto,
   refreshToken,
 };

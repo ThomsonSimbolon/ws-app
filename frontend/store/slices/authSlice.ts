@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { login as loginService, LoginResponse } from '@/lib/authService';
+import { login as loginService } from '@/lib/authService';
 import { clearAuthTokens } from '@/lib/api';
 import { ApiError } from '@/lib/api';
 
@@ -8,6 +8,9 @@ import { ApiError } from '@/lib/api';
  * 
  * Purpose: Manage authentication state with API integration
  * Why in Redux: Auth is global state, needed across many components
+ * 
+ * IMPORTANT: Initial state is always unauthenticated for SSR consistency.
+ * Use hydrateAuth action after mount to restore auth from localStorage.
  */
 
 export interface User {
@@ -15,6 +18,9 @@ export interface User {
   username: string;
   email: string;
   fullName?: string;
+  profilePhoto?: string;
+  phoneNumber?: string;
+  bio?: string;
   role: 'admin' | 'user';
   isActive: boolean;
   avatar?: string;
@@ -25,36 +31,16 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   error: string | null;
+  isHydrated: boolean; // Track if we've hydrated from localStorage
 }
 
-// Check if user is already authenticated (has token in localStorage)
-const getInitialAuthState = (): { isAuthenticated: boolean; user: User | null } => {
-  if (typeof window === 'undefined') {
-    return { isAuthenticated: false, user: null };
-  }
-
-  const token = localStorage.getItem('token');
-  const userStr = localStorage.getItem('user');
-
-  if (token && userStr) {
-    try {
-      const user = JSON.parse(userStr);
-      return { isAuthenticated: true, user };
-    } catch {
-      return { isAuthenticated: false, user: null };
-    }
-  }
-
-  return { isAuthenticated: false, user: null };
-};
-
-const initialAuthState = getInitialAuthState();
-
+// Initial state is ALWAYS unauthenticated for SSR consistency
 const initialState: AuthState = {
-  isAuthenticated: initialAuthState.isAuthenticated,
-  user: initialAuthState.user,
+  isAuthenticated: false,
+  user: null,
   loading: false,
   error: null,
+  isHydrated: false,
 };
 
 /**
@@ -82,6 +68,29 @@ const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
+    // Hydrate auth state from localStorage - call this after component mount
+    hydrateAuth: (state) => {
+      if (typeof window === 'undefined') {
+        state.isHydrated = true;
+        return;
+      }
+
+      const token = localStorage.getItem('token');
+      const userStr = localStorage.getItem('user');
+
+      if (token && userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          state.isAuthenticated = true;
+          state.user = user;
+        } catch {
+          state.isAuthenticated = false;
+          state.user = null;
+        }
+      }
+      state.isHydrated = true;
+    },
+
     logout: (state) => {
       state.isAuthenticated = false;
       state.user = null;
@@ -122,6 +131,7 @@ const authSlice = createSlice({
         state.isAuthenticated = true;
         state.user = action.payload.user;
         state.error = null;
+        state.isHydrated = true;
       })
       // Login rejected
       .addCase(loginAsync.rejected, (state, action) => {
@@ -133,5 +143,6 @@ const authSlice = createSlice({
   },
 });
 
-export const { logout, updateUser, clearError } = authSlice.actions;
+export const { logout, updateUser, clearError, hydrateAuth } = authSlice.actions;
 export default authSlice.reducer;
+
