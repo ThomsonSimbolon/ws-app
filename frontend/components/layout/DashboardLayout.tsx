@@ -53,7 +53,7 @@ export default function DashboardLayout({ children, renderSidebar, renderNavbar 
       {/* Mobile: no offset (sidebar is drawer) */}
       {/* Tablet: no offset (sidebar is drawer) */}
       {/* Desktop: 240px offset (expanded) or 64px offset (collapsed) */}
-      <div className={`flex-1 flex flex-col ml-0 transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-[margin-left] ${isCollapsed ? 'xl:ml-16' : 'xl:ml-60'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 ml-0 transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] will-change-[margin-left] ${isCollapsed ? 'xl:ml-16' : 'xl:ml-60'}`}>
         {/* Navbar - Always render, state is consistent between SSR and client */}
         {renderNavbar({
           onMenuClick: () => setIsSidebarOpen(true),
