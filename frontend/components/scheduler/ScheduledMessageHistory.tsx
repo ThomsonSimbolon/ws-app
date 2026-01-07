@@ -38,15 +38,16 @@ export default function ScheduledMessageHistory({
 
   // Handle Cancel
   const handleCancel = async (messageId: string) => {
-    if (!confirm('Are you sure you want to cancel this scheduled message?')) return;
-    
+    if (!window.confirm('Are you sure you want to cancel this scheduled message?')) return;
+
     setCancellingId(messageId);
     try {
-      await cancelScheduledMessage(deviceId, messageId);
+      await cancelScheduledMessage(messageId);
       // Refresh list
-      fetchHistory();
-    } catch (err: any) {
-      alert(err.message || 'Failed to cancel message');
+      void fetchHistory();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to cancel message';
+      window.alert(message);
     } finally {
       setCancellingId(null);
     }
