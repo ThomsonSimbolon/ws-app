@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ReduxProvider } from "@/store/provider";
+import { ToastProvider } from "@/context/ToastContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -58,7 +59,9 @@ export default function RootLayout({
       <body className={inter.className}>
         {/* Redux Provider wraps the entire app */}
         <ReduxProvider>
-          {children}
+          <ToastProvider>
+            {children}
+          </ToastProvider>
         </ReduxProvider>
       </body>
     </html>

@@ -18,17 +18,53 @@ export default function NotificationCenter() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+  // Normalize API URL and use global events endpoint
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+  const eventEndpoint = cleanBaseUrl.endsWith('/api') ? '/events' : '/api/events';
+  const sseUrl = `${cleanBaseUrl}${eventEndpoint}`;
 
-  const { status } = useSSE(`${API_BASE_URL}/notifications/stream`, {
+  const { status } = useSSE(sseUrl, {
     onMessage: (event) => {
       try {
         const data = JSON.parse(event.data);
+        
+        // Ignore technical/heartbeat/status messages to prevent flooding
+        if (['heartbeat', 'connected', 'whatsapp-status', 'qr-code', 'auto_reply_sent'].includes(data.type)) return;
+
+        // Allow message formatting for specific event types
+        let title = data.title || 'New Update';
+        let message = data.message;
+        let type = data.type || 'info';
+
+        if (!message) {
+           switch (data.type) {
+             case 'bot_handoff_started':
+               title = '👋 Handoff Started';
+               message = `Conversation with ${data.phoneNumber || 'User'} passed to human.`;
+               break;
+             case 'bot_resumed':
+               title = '🤖 Bot Resumed';
+               message = `Bot is back in charge for ${data.phoneNumber || 'User'}.`;
+               type = 'success';
+               break;
+             case 'rate_limited':
+               title = '⚠️ Rate Limit Warning';
+               message = `Too many messages for device ${data.deviceId}.`;
+               type = 'warning';
+               break;
+             default:
+               // Fallback: If we still don't have a message, DO NOT show raw JSON.
+               // Just show a generic message or skip it.
+               message = 'New activity recorded.';
+           }
+        }
+
         addNotification({
-          id: Date.now().toString(),
-          title: data.title || 'New Notification',
-          message: data.message || JSON.stringify(data),
-          type: data.type || 'info',
+          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          title,
+          message,
+          type,
           timestamp: new Date(),
           read: false,
         });

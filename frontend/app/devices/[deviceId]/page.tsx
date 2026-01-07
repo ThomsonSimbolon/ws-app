@@ -131,6 +131,13 @@ export default function DeviceDetailPage() {
                  >
                    Go to Dashboard
                  </Button>
+                 <Button 
+                   variant="outline" 
+                   className="w-full border-primary text-primary hover:bg-primary-soft"
+                   onClick={() => router.push(`/devices/${encodeURIComponent(device.deviceId)}/bot`)}
+                 >
+                   🤖 Bot Configuration
+                 </Button>
                </div>
              </Card>
           </div>

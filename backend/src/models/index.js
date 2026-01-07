@@ -10,7 +10,11 @@ const Statistic = require("./Statistic");
 const ScheduledMessage = require("./ScheduledMessage");
 const AdminActionLog = require("./AdminActionLog");
 const MessageTemplate = require("./MessageTemplate");
+const AutoReplyRule = require("./AutoReplyRule");
+const DeviceBotConfig = require("./DeviceBotConfig");
+const BotActionLog = require("./BotActionLog");
 const { sequelize } = require("../config/database");
+
 
 // Define associations
 User.hasMany(WhatsAppSession, {
@@ -133,4 +137,7 @@ module.exports = {
   ScheduledMessage,
   AdminActionLog,
   MessageTemplate,
+  AutoReplyRule,
+  DeviceBotConfig,
+  BotActionLog,
 };

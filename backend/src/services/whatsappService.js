@@ -1130,6 +1130,41 @@ class WhatsAppService {
         }
       }
 
+      // ========== AUTO-REPLY BOT HOOK ==========
+      // Process incoming messages for auto-reply (after save, before SSE)
+      // Only for: incoming messages (!fromMe), real-time (!isHistory), text content
+      if (!fromMe && !isHistory && messageContent && messageContent !== "[Media]") {
+        try {
+          const autoReplyService = require("./autoReplyService");
+          
+          // Create send message function wrapper for bot to use
+          const sendBotReply = async (recipientJid, replyMessage) => {
+            try {
+              const socket = this.sessions.get(deviceId);
+              if (socket && sessionState?.status === "connected") {
+                await socket.sendMessage(recipientJid, { text: replyMessage });
+                logger.info(`🤖 Bot reply sent to ${recipientJid}: "${replyMessage.substring(0, 50)}..."`);
+              }
+            } catch (sendError) {
+              logger.error(`❌ Failed to send bot reply:`, sendError);
+            }
+          };
+
+          // Process message for auto-reply (fail-silent)
+          await autoReplyService.processIncoming(
+            deviceId,
+            remoteJid,
+            messageContent,
+            message.key.id,
+            sendBotReply
+          );
+        } catch (botError) {
+          // Fail silently - bot errors should never break message flow
+          logger.error(`❌ Bot processing error (non-fatal):`, botError);
+        }
+      }
+      // ========== END AUTO-REPLY BOT HOOK ==========
+
       // Send to SSE clients ONLY if NOT history
       if (!isHistory) {
         this.sendSSEUpdate(userId, {

@@ -15,6 +15,7 @@ const whatsappRoutes = require("./routes/whatsapp");
 const whatsappMultiDeviceRoutes = require("./routes/whatsappMultiDevice");
 const sseRoutes = require("./routes/sse");
 const adminRoutes = require("./routes/admin");
+const botRoutes = require("./routes/bot");
 
 const app = express();
 
@@ -63,6 +64,7 @@ app.use("/api/whatsapp", whatsappRoutes); // Legacy routes (backward compatibili
 app.use("/api/whatsapp-multi-device", whatsappMultiDeviceRoutes); // New multi-device routes
 app.use("/api/events", sseRoutes);
 app.use("/api/admin", adminRoutes); // Admin-only routes (requires admin role)
+app.use("/api/bot", botRoutes); // Bot auto-reply routes
 
 // Health check
 app.get("/api/health", (req, res) => {

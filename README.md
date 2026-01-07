@@ -32,7 +32,39 @@ Backend service untuk WhatsApp Business dengan dukungan multi-device menggunakan
 
 ---
 
-## � Update Terbaru
+## ✨ Update Terbaru
+
+### Versi 1.3.0 (Januari 2026 - Current)
+
+#### Fitur Baru & Improvement
+
+1.  **Bot & Auto Reply System 🤖**
+
+    -   **Bot Configuration**: Konfigurasi bot per device (timezone, business hours, welcome message).
+    -   **Auto Reply Rules**: Sistem rule fleksibel (Trigger keywords, Regex support, Priority).
+    -   **Business Hours**: Jadwal operasional interaktif dengan pesan di luar jam kerja.
+    -   **Handoff System**: Mekanisme handoff dari bot ke manusia (agent) dengan keyword tertentu.
+
+2.  **Data Export Center 📊**
+
+    -   **Export Capabilities**: Export data Users, Devices, Messages, dan Audit Logs.
+    -   **Format Support**: Dukungan format JSON dan CSV.
+    -   **Flexible Filters**: Filter data berdasarkan tanggal, status, dan kategori.
+
+3.  **UI/UX Refinements**
+
+    -   **Business Hours Editor**: Editor visual untuk jadwal operasional bot.
+    -   **Admin Message Layout**: Perbaikan layout pesan untuk readability yang lebih baik.
+    -   **Audit Log Filters**: Perbaikan sistem filtering pada audit logs.
+
+#### Bug Fixes & Optimizations
+
+-   Fixed linter errors in ScheduledMessageHistory.
+-   Resolved "Failed to load filters" in AuditLogViewer.
+-   Optimized internal API endpoints (migrated from external sources).
+-   Improved Contact Group functionality verification.
+
+---
 
 ### Versi 1.2.0 (Januari 2026)
 
@@ -120,7 +152,7 @@ Backend service untuk WhatsApp Business dengan dukungan multi-device menggunakan
 
 ---
 
-## �🎯 Overview
+## 🎯 Overview
 
 WhatsApp Service adalah backend API untuk mengelola koneksi WhatsApp dengan dukungan multi-device. Setiap user dapat memiliki multiple devices/akun WhatsApp yang terhubung secara bersamaan. Sistem ini menggunakan arsitektur RESTful API dengan real-time updates melalui Server-Sent Events (SSE).
 
@@ -316,6 +348,7 @@ Client                     Express Server      WhatsAppService    Baileys       
   │                              │                    │               │                │
   │ (SSE Event)                  │                    │               │                │
   │←── message.delivered ────────│                    │               │                │
+  │     { messageId, status }    │                    │               │                │
 ```
 
 ### 4. Bulk Messaging Flow (Job Queue)
@@ -416,10 +449,50 @@ Client                     Express Server      WhatsAppService    Event System
   │                              │                    │                  │
   │←── SSE: message.status ──────│                    │                  │
   │     { messageId, status }    │                    │                  │
+  │                              │── Remove ──────────→│                  │
+  │                              │   Connection       │                  │
   │                              │                    │                  │
   │── Close Connection ─────────→│                    │                  │
   │                              │── Remove ──────────→│                  │
   │                              │   Connection       │                  │
+  │                              │                    │                  │
+```
+
+### 6. Bot Auto-Reply & Handoff Flow
+
+```
+Incoming Msg           WhatsAppService    BotController   AutoReplySvc    HandoffSvc     Database
+     │                       │                 │               │               │             │
+     │── Msg Received ──────→│                 │               │               │             │
+     │                       │── Check ───────→│               │               │             │
+     │                       │   Handoff       │               │── Is Active? →│             │
+     │                       │                 │               │←─ Status ─────│             │
+     │                       │←─ Skip (If ──── │               │               │             │
+     │                       │    Active)      │               │               │             │
+     │                       │                 │               │               │             │
+     │                       │── Process ─────→│               │               │             │
+     │                       │   Auto Reply    │               │               │             │
+     │                       │                 │── Get Config →│               │── Find ────→│
+     │                       │                 │               │               │   Config    │
+     │                       │                 │←─ Config ─────│               │←─ Match ────│
+     │                       │                 │               │               │             │
+     │                       │                 │── Validate ──→│               │             │
+     │                       │                 │   Business    │               │             │
+     │                       │                 │   Hours       │               │             │
+     │                       │                 │               │               │             │
+     │                       │                 │── Find ──────→│               │── Find ────→│
+     │                       │                 │   Rule        │               │   Rules     │
+     │                       │                 │               │←─ Match ──────│             │
+     │                       │                 │               │   Rule        │             │
+     │                       │                 │               │               │             │
+     │                       │←─ Action ───────│               │               │             │
+     │                       │   (Reply/       │               │               │             │
+     │                       │    Handoff)     │               │               │             │
+     │── Send Reply ────────→│                 │               │               │             │
+     │                       │                 │               │               │             │
+     │ (If Handoff Keyword)  │                 │               │               │             │
+     │                       │── Start ───────→│               │── Create ────→│── Save ────→│
+     │                       │   Handoff       │               │   Session     │   Handoff   │
 ```
 
 ---
@@ -480,6 +553,18 @@ Client                     Express Server      WhatsAppService    Event System
 - ✅ **Schedule Text Messages**: Jadwalkan pengiriman pesan di waktu tertentu
 - ✅ **Schedule Management**: Monitor, cancel, dan track status pesan terjadwal
 - ✅ **Auto-Processing**: Background job runner untuk mengirim pesan sesuai jadwal
+
+### Bot & Auto Reply
+
+- ✅ **Smart Auto Reply**: Balas pesan otomatis berdasarkan keyword atau pola (Regex)
+- ✅ **Business Hours**: Atur jam operasional dengan pesan otomatis di luar jam kerja
+- ✅ **Handoff Protocol**: Transisi mulus dari Bot ke Agent manusia
+- ✅ **Bot Analytics**: Tracking performa bot dan handoff history
+
+### Data Management
+
+- ✅ **Data Export**: Export users, devices, messages, dan logs ke CSV/JSON
+- ✅ **Audit Trails**: Log aktivitas lengkap untuk keamanan dan audit
 
 ---
 
@@ -544,6 +629,9 @@ ws-app/
 │   │   ├── controllers/
 │   │   │   ├── authController.js       # Authentication endpoints (register, login, profile)
 │   │   │   ├── adminController.js      # Admin endpoints (user/device/message management)
+│   │   │   ├── botController.js        # Bot configuration and logic
+│   │   │   ├── exportController.js     # Data export features
+│   │   │   ├── auditController.js      # Audit trail system
 │   │   │   ├── whatsappController.js   # Legacy WhatsApp endpoints (backward compatibility)
 │   │   │   └── whatsappMultiDeviceController.js  # Multi-device WhatsApp endpoints
 │   │   │
@@ -559,6 +647,7 @@ ws-app/
 │   │   │   ├── Contact.js              # Contact model (name, phoneNumber, jid)
 │   │   │   ├── Group.js                # Group model (groupId, name, participants, admins)
 │   │   │   ├── Statistic.js            # Statistics model (deviceId, date, metrics)
+│   │   │   ├── ScheduledMessage.js     # Scheduled message model
 │   │   │   └── index.js                # Model associations & exports
 │   │   │
 │   │   ├── routes/
@@ -572,7 +661,10 @@ ws-app/
 │   │   │   ├── deviceManager.js        # Device CRUD operations, ownership validation
 │   │   │   ├── whatsappService.js      # WhatsApp connection, messaging, event handling
 │   │   │   ├── jobQueueService.js      # Bulk messaging job queue processing
-│   │   │   └── statisticsService.js    # Statistics calculation & tracking
+│   │   │   ├── statisticsService.js    # Statistics calculation & tracking
+│   │   │   ├── autoReplyService.js     # Logic for auto-reply engine
+│   │   │   ├── handoffService.js       # Logic for bot-to-human handoff
+│   │   │   └── businessHoursService.js # Logic for business hours validation
 │   │   │
 │   │   └── utils/
 │   │       ├── jwt.js                  # JWT token generation & verification
@@ -583,7 +675,8 @@ ws-app/
 │   │   ├── 20241226000000-add-device-id-to-sessions.js
 │   │   ├── 20241226000001-add-device-id-unique-constraint.js
 │   │   ├── 20241226000002-create-groups-table.js
-│   │   └── 20241226000003-create-statistics-table.js
+│   │   ├── 20241226000003-create-statistics-table.js
+│   │   └── 20241226000004-create-scheduled-messages-table.js
 │   │
 │   ├── scripts/                        # Utility scripts
 │   │   ├── migrate-sessions-to-devices.js
@@ -664,7 +757,26 @@ Menangani operasi admin:
 - Job Control: `listJobs()`, `getJobDetails()`, `cancelJob()`, `pauseJob()`, `resumeJob()`, `retryJob()`
 - Statistics: `getStats()` (global statistics)
 
-#### `auditController.js` (NEW)
+#### `botController.js`
+
+Menangani konfigurasi dan logic bot otomatis:
+
+- Config: `getBotConfig()`, `updateBotConfig()`
+- Rules: `listRules()`, `createRule()`, `updateRule()`, `deleteRule()`
+- Handoffs: `listHandoffs()`, `resumeHandoff()`
+- Logs: `getBotLogs()`
+- Stats: `getBotStats()`
+
+#### `exportController.js`
+
+Menangani fitur data export:
+
+- `exportUsers()` - Export user data (JSON/CSV)
+- `exportDevices()` - Export device data
+- `exportMessages()` - Export message history
+- `exportLogs()` - Export audit logs
+
+#### `auditController.js`
 
 Menangani sistem audit trail:
 
@@ -714,6 +826,28 @@ Tracking dan kalkulasi statistik:
 - `getStatistics(deviceId, startDate, endDate)` - Get statistik dengan range date
 - `getDailyActivity(deviceId)` - Get aktivitas harian
 - `calculateResponseRate(deviceId)` - Hitung response rate
+
+#### `autoReplyService.js`
+
+Logic untuk auto-reply engine:
+
+- `processMessage(deviceId, message)` - Process incoming message against rules
+- `findMatchingRule(message, rules)` - Match message content dengan trigger
+- `executeRule(rule, deviceId, contact)` - Kirim balasan otomatis
+
+#### `handoffService.js`
+
+Logic untuk transisi Bot ke Manusia:
+
+- `checkHandoff(deviceId, contact)` - Cek apakah user sedang dalam mode handoff
+- `createHandoff(deviceId, contact)` - Mulai sesi handoff (disable bot untuk user ini)
+- `resumeBot(deviceId, contact)` - Akhiri handoff, kembali ke bot
+
+#### `businessHoursService.js`
+
+Logic validasi jam kerja:
+
+- `isOpen(config, timezone)` - Cek apakah saat ini jam operasional buka
 
 ### 3. Middleware
 
@@ -1129,6 +1263,7 @@ Dapat dikonfigurasi di `src/app.js`.
 - `20241226000001-add-device-id-unique-constraint.js` - Add unique constraint untuk `device_id`
 - `20241226000002-create-groups-table.js` - Create `groups` table
 - `20241226000003-create-statistics-table.js` - Create `statistics` table
+- `20241226000004-create-scheduled-messages-table.js` - Create `scheduled_messages` table
 
 ### Auto Table Creation
 
@@ -1317,7 +1452,7 @@ GET /api/events?token=<token>
 | Method | Endpoint                       | Description                    | Auth | Role       |
 | ------ | ------------------------------ | ------------------------------ | ---- | ---------- |
 | GET    | `/chat-history/:jid`           | Get chat history dengan kontak | ✅   | User/Admin |
-| GET    | `/group-chat-history/:groupId` | Get group chat history         | ✅   | User/Admin |
+| GET    | `/group-chat-history/:groupId` | Get group chat history         | ✅   | Admin      |
 | GET    | `/daily-chat-list`             | Get daily chat list            | ✅   | User/Admin |
 
 #### 8. Statistics (`/api/whatsapp-multi-device/devices/:deviceId/statistics`)
@@ -1333,7 +1468,30 @@ GET /api/events?token=<token>
 | ------ | -------- | -------------------------------------- | ---- | ---------- |
 | GET    | `/`      | SSE connection untuk real-time updates | ✅   | User/Admin |
 
-#### 10. Admin Endpoints (`/api/admin`)
+#### 10. Bot Management (`/api/whatsapp-multi-device/devices/:deviceId/bot`)
+
+| Method | Endpoint                                | Description                               | Auth | Role       |
+| ------ | --------------------------------------- | ----------------------------------------- | ---- | ---------- |
+| GET    | `/config`                               | Get bot configuration for a device        | ✅   | User/Admin |
+| PUT    | `/config`                               | Update bot configuration for a device     | ✅   | User/Admin |
+| GET    | `/rules`                                | List auto-reply rules for a device        | ✅   | User/Admin |
+| POST   | `/rules`                                | Create a new auto-reply rule              | ✅   | User/Admin |
+| PUT    | `/rules/:ruleId`                        | Update an auto-reply rule                 | ✅   | User/Admin |
+| DELETE | `/rules/:ruleId`                        | Delete an auto-reply rule                 | ✅   | User/Admin |
+| GET    | `/handoffs`                             | List active handoff sessions              | ✅   | User/Admin |
+| POST   | `/handoffs/:contactJid/resume-bot`      | Resume bot for a contact (end handoff)    | ✅   | User/Admin |
+| GET    | `/logs`                                 | Get bot activity logs                     | ✅   | User/Admin |
+
+#### 11. Data Export (`/api/export`)
+
+| Method | Endpoint        | Description                               | Auth | Role  |
+| ------ | --------------- | ----------------------------------------- | ---- | ----- |
+| GET    | `/users`        | Export user data (JSON/CSV)               | ✅   | Admin |
+| GET    | `/devices`      | Export device data (JSON/CSV)             | ✅   | Admin |
+| GET    | `/messages`     | Export message history (JSON/CSV)         | ✅   | Admin |
+| GET    | `/audit-logs`   | Export audit logs (JSON/CSV)              | ✅   | Admin |
+
+#### 12. Admin Endpoints (`/api/admin`)
 
 | Method | Endpoint              | Description                                      | Auth | Role  |
 | ------ | --------------------- | ------------------------------------------------ | ---- | ----- |
@@ -1416,6 +1574,9 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
 | Create Group Media Job     | ✅    | ❌   | Hanya admin                         |
 | View Job Status            | ✅    | ✅   | Admin: semua, User: device miliknya |
 | Cancel Job                 | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Pause Job                  | ✅    | ❌   | Hanya admin                         |
+| Resume Job                 | ✅    | ❌   | Hanya admin                         |
+| Retry Job                  | ✅    | ❌   | Hanya admin                         |
 | **Group Management**       |       |      |                                     |
 | List Groups                | ✅    | ❌   | Hanya admin                         |
 | Create Group               | ✅    | ❌   | Hanya admin                         |
@@ -1432,6 +1593,21 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
 | View Device Statistics     | ✅    | ❌   | Hanya admin                         |
 | View Daily Activity        | ✅    | ❌   | Hanya admin                         |
 | View Global Statistics     | ✅    | ❌   | Hanya admin                         |
+| **Bot & Auto Reply**       |       |      |                                     |
+| Get Bot Config             | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Update Bot Config          | ✅    | ✅   | Admin: semua, User: device miliknya |
+| List Auto-Reply Rules      | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Create Auto-Reply Rule     | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Update Auto-Reply Rule     | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Delete Auto-Reply Rule     | ✅    | ✅   | Admin: semua, User: device miliknya |
+| List Handoffs              | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Resume Bot (End Handoff)   | ✅    | ✅   | Admin: semua, User: device miliknya |
+| Get Bot Logs               | ✅    | ✅   | Admin: semua, User: device miliknya |
+| **Data Export**            |       |      |                                     |
+| Export Users               | ✅    | ❌   | Hanya admin                         |
+| Export Devices             | ✅    | ❌   | Hanya admin                         |
+| Export Messages            | ✅    | ❌   | Hanya admin                         |
+| Export Audit Logs          | ✅    | ❌   | Hanya admin                         |
 | **Admin Panel**            |       |      |                                     |
 | Manage Users (CRUD)        | ✅    | ❌   | Hanya admin                         |
 | View All Devices           | ✅    | ❌   | Hanya admin                         |
@@ -1491,7 +1667,13 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
    ├── Cancel Job (POST /api/whatsapp-multi-device/jobs/:jobId/cancel)
    └── Receive Job Notifications (via SSE)
 
-7. SSE EVENTS (Real-time Updates)
+7. BOT MANAGEMENT (Owned Devices Only)
+   ├── Get/Update Bot Config (GET/PUT /api/whatsapp-multi-device/devices/:deviceId/bot/config)
+   ├── Manage Auto-Reply Rules (CRUD /api/whatsapp-multi-device/devices/:deviceId/bot/rules)
+   ├── Monitor Handoffs (GET /api/whatsapp-multi-device/devices/:deviceId/bot/handoffs)
+   └── Resume Bot for Contact (POST /api/whatsapp-multi-device/devices/:deviceId/bot/handoffs/:contactJid/resume-bot)
+
+8. SSE EVENTS (Real-time Updates)
    ├── Device Status Changes
    ├── QR Code Generated
    ├── Connection Status Updates
@@ -1560,36 +1742,42 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
    ├── Monitor All Jobs (GET /api/admin/jobs)
    ├── Job Control Actions:
    │   ├── Cancel Job
-   │   ├── Pause Job (POST /api/admin/jobs/:id/pause)
-   │   ├── Resume Job (POST /api/admin/jobs/:id/resume)
-   │   └── Retry Job (POST /api/admin/jobs/:id/retry)
-   └── Receive Job Completion Notifications
+   │   ├── Pause Job (POST /api/admin/jobs/:jobId/pause)
+   │   ├── Resume Job (POST /api/admin/jobs/:jobId/resume)
+   │   └── Retry Job (POST /api/admin/jobs/:jobId/retry)
+   │   └── Receive Job Completion Notifications
 
-7. AUDIT & MONITORING
-   ├── View Audit Logs (GET /api/admin/logs)
-   │   ├── Filter by Admin, Action, Target
-   │   └── Track sensitive actions (user delete, device wipe, etc.)
-   └── System Monitoring
-       ├── Global Statistics (GET /api/admin/stats)
-       └── Health Check
+7. BOT & AUTOMATION MANAGEMENT
+   ├── Manage Bot Config (GET/PUT /api/whatsapp-multi-device/devices/:deviceId/bot/config)
+   ├── Edit Auto Reply Rules (CRUD /api/whatsapp-multi-device/devices/:deviceId/bot/rules)
+   ├── Monitor All Handoffs (GET /api/whatsapp-multi-device/devices/:deviceId/bot/handoffs)
+   ├── Override Handoff Status (POST /api/whatsapp-multi-device/devices/:deviceId/bot/handoffs/:contactJid/resume-bot)
+   └── View All Bot Logs (GET /api/whatsapp-multi-device/devices/:deviceId/bot/logs)
 
-8. ANALYTICS & STATISTICS
+8. DATA EXPORT & AUDIT
+   ├── Export User Data (GET /api/export/users)
+   ├── Export Device List (GET /api/export/devices)
+   ├── Export Message History (GET /api/export/messages)
+   ├── Export Admin Audit Logs (GET /api/export/audit-logs)
+   └── View Audit Logs (GET /api/admin/logs)
+       ├── Filter by Admin, Action, Target
+       └── Track sensitive actions (user delete, device wipe, etc.)
+   
+9. ANALYTICS & MONITORING
    ├── Global Statistics (GET /api/admin/stats)
-   │   ├── Total devices online
-   │   ├── Total messages sent/received
-   │   ├── Active users count
+   │   ├── Total users, devices, messages
+   │   ├── Online devices count
    │   └── System health metrics
    ├── Device Statistics (GET /api/whatsapp-multi-device/devices/:deviceId/statistics)
    │   ├── Daily activity
    │   ├── Message count (in/out)
    │   ├── Active chats
    │   └── Response rate
-   └── User Analytics
-       ├── Activity per user
-       ├── Device usage statistics
-       └── Message patterns
+   └── System Monitoring
+       ├── Health Check
+       └── Performance metrics
 
-9. SSE EVENTS (Real-time Admin Notifications)
+10. SSE EVENTS (Real-time Admin Notifications)
    ├── User Account Changes
    ├── Device Connection Status
    ├── Bulk Message Progress
@@ -1655,7 +1843,14 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
    - Export statistics
    - Export message history
    - Export user data
+   - Export audit logs
    - Generate reports
+
+8. Bot Management (All Devices)
+   - Configure bot for any device
+   - Manage global auto-reply rules
+   - Monitor all handoffs
+   - View all bot logs
 ```
 
 #### **User Features** 👤
@@ -1691,6 +1886,13 @@ Sistem menggunakan role-based access control (RBAC) untuk membatasi akses ke fit
    - Get device status updates
    - Receive message notifications
    - Get job progress updates
+
+6. Bot Management (Owned Devices)
+   - Enable/Disable bot
+   - Configure business hours
+   - Setup auto-reply rules for own devices
+   - Monitor handoffs on own devices
+   - View bot logs for own devices
 ```
 
 ### Authentication & Authorization Flow
@@ -1879,7 +2081,7 @@ async getDevice(req, res) {
 
 ---
 
-## � Current Implementation Status
+## 📊 Current Implementation Status
 
 ### Sistem Status Saat Ini (Januari 2026)
 
@@ -1948,6 +2150,19 @@ async getDevice(req, res) {
 - ✅ Per-device statistics
 - ✅ Global statistics dashboard
 
+**Bot & Auto Reply:**
+
+- ✅ Bot configuration per device
+- ✅ Flexible auto-reply rules (keyword, regex, priority)
+- ✅ Business hours management
+- ✅ Handoff mechanism from bot to human agent
+
+**Data Management:**
+
+- ✅ Data export for Users, Devices, Messages, and Audit Logs
+- ✅ Support for JSON and CSV formats
+- ✅ Filtering options for data export
+
 #### 🔄 Current API Endpoints
 
 **Authentication (Public):**
@@ -1985,6 +2200,25 @@ async getDevice(req, res) {
 - `GET /api/whatsapp-multi-device/devices/:deviceId/groups/:groupId/info` - Group info
 - `POST /api/whatsapp-multi-device/devices/:deviceId/send-group-message` - Send group message
 
+**Bot Management (User & Admin):**
+
+- `GET /api/whatsapp-multi-device/devices/:deviceId/bot/config` - Get bot config
+- `PUT /api/whatsapp-multi-device/devices/:deviceId/bot/config` - Update bot config
+- `GET /api/whatsapp-multi-device/devices/:deviceId/bot/rules` - List bot rules
+- `POST /api/whatsapp-multi-device/devices/:deviceId/bot/rules` - Create bot rule
+- `PUT /api/whatsapp-multi-device/devices/:deviceId/bot/rules/:ruleId` - Update bot rule
+- `DELETE /api/whatsapp-multi-device/devices/:deviceId/bot/rules/:ruleId` - Delete bot rule
+- `GET /api/whatsapp-multi-device/devices/:deviceId/bot/handoffs` - List handoffs
+- `POST /api/whatsapp-multi-device/devices/:deviceId/bot/handoffs/:contactJid/resume-bot` - Resume bot
+- `GET /api/whatsapp-multi-device/devices/:deviceId/bot/logs` - Get bot logs
+
+**Data Export (Admin Only):**
+
+- `GET /api/export/users` - Export users
+- `GET /api/export/devices` - Export devices
+- `GET /api/export/messages` - Export messages
+- `GET /api/export/audit-logs` - Export audit logs
+
 **Admin (Admin Only):**
 
 - `GET /api/admin/users` - List users
@@ -1992,6 +2226,10 @@ async getDevice(req, res) {
 - `GET /api/admin/devices` - List all devices
 - `GET /api/admin/messages` - List all messages
 - `GET /api/admin/stats` - Global statistics
+- `POST /api/admin/jobs/:jobId/pause` - Pause job
+- `POST /api/admin/jobs/:jobId/resume` - Resume job
+- `POST /api/admin/jobs/:jobId/retry` - Retry job
+- `GET /api/admin/logs` - Get audit logs
 
 **Real-time (User & Admin):**
 
@@ -2008,6 +2246,8 @@ async getDevice(req, res) {
 - Bulk messaging operations
 - Global statistics
 - System monitoring
+- Full Bot Management (all devices)
+- Data Export capabilities
 
 **User Role:**
 
@@ -2017,6 +2257,7 @@ async getDevice(req, res) {
 - Job monitoring (owned device jobs)
 - Profile management
 - Real-time updates (owned devices)
+- Personal Bot Management (owned devices)
 
 #### 🔒 Security Implementation
 
@@ -2073,6 +2314,8 @@ async getDevice(req, res) {
 │  - User List (CRUD)                     │
 │  - User Details & Activity              │
 │  - Assign Devices to Users              │
+│  - Lock/Unlock Accounts                 │
+│  - Reset User Passwords                 │
 │                                         │
 │ Device Management:                      │
 │  - All Devices Overview                 │
@@ -2090,19 +2333,29 @@ async getDevice(req, res) {
 │  - Job Queue Overview                   │
 │  - Job Progress Tracking                │
 │  - Job History                          │
-│  - Cancel Jobs                          │
+│  - Cancel/Pause/Resume/Retry Jobs       │
+│                                         │
+│ Bot Management:                         │
+│  - Global Bot Configuration             │
+│  - Auto Reply Rules Management          │
+│  - Handoff Monitoring & Control         │
+│  - Bot Logs Viewer                      │
 │                                         │
 │ Analytics & Reports:                    │
 │  - Global Statistics                    │
 │  - Usage Analytics                      │
 │  - Activity Reports                     │
-│  - Export Data                          │
+│  - Export Data (Users, Devices, Messages, Logs) │
 │                                         │
 │ Settings:                               │
 │  - System Configuration                 │
 │  - User Roles Management                │
 │  - API Settings                         │
 │  - Security Settings                    │
+│                                         │
+│ Audit Logs:                             │
+│  - View Admin Action Logs               │
+│  - Filter & Search Logs                 │
 └─────────────────────────────────────────┘
 ```
 
@@ -2138,6 +2391,12 @@ async getDevice(req, res) {
 │  - Profile Information                  │
 │  - Change Password                      │
 │  - Account Settings                     │
+│                                         │
+│ Bot Management:                         │
+│  - Configuration (Hours, Greetings)     │
+│  - Auto Reply Rules                     │
+│  - Handoff Monitoring                   │
+│  - Bot Logs                             │
 │                                         │
 │ Notifications:                          │
 │  - Real-time Updates                    │
