@@ -6,6 +6,7 @@ import userDashboardReducer from "./slices/userDashboardSlice";
 import deviceReducer from "./slices/deviceSlice";
 import notificationReducer from "./slices/notificationSlice";
 import botReducer from "./slices/botSlice";
+import analyticsReducer from "./slices/analyticsSlice";
 
 /**
  * Redux Store Configuration
@@ -34,6 +35,7 @@ export const store = configureStore({
     device: deviceReducer,
     notifications: notificationReducer,
     bot: botReducer,
+    analytics: analyticsReducer,
   },
   // Redux DevTools enabled in development only
   devTools: process.env.NODE_ENV !== "production",

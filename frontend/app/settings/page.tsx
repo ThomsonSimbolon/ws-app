@@ -89,7 +89,7 @@ export default function SettingsPage() {
 
   return (
     <Layout>
-      <div className="space-y-6 max-w-3xl mx-auto">
+      <div className="space-y-6">
         {/* Page Header */}
         <div>
           <h1 className="text-3xl font-bold text-text-primary mb-2">Settings</h1>

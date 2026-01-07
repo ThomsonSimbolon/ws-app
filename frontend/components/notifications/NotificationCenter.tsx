@@ -30,6 +30,12 @@ export default function NotificationCenter() {
         const data = JSON.parse(event.data);
         
         // Ignore technical/heartbeat/status messages to prevent flooding
+        // 
+        // DESIGN DECISION: 'auto_reply_sent' is intentionally excluded from toast notifications.
+        // Rationale: Auto-reply events can be high-frequency, and showing a toast for every
+        // automated response would create notification noise and degrade user experience.
+        // Auto-reply activity is tracked in Bot Logs for auditing purposes.
+        // See: Frontend Coverage Audit (2026-01-07)
         if (['heartbeat', 'connected', 'whatsapp-status', 'qr-code', 'auto_reply_sent'].includes(data.type)) return;
 
         // Allow message formatting for specific event types
