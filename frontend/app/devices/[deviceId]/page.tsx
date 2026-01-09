@@ -60,7 +60,7 @@ export default function DeviceDetailPage() {
 
   return (
     <UserLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="w-full space-y-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={() => router.back()}>
             ← Back

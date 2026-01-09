@@ -1485,6 +1485,8 @@ GET /api/events?token=<token>
 | POST   | `/refresh-token` | Refresh JWT token            | ❌            |
 | GET    | `/profile`       | Get profil user saat ini     | ✅            |
 | PUT    | `/profile`       | Update profil user           | ✅            |
+| POST   | `/profile/photo` | Upload profile photo         | ✅            |
+
 
 #### 2. Device Management (`/api/whatsapp-multi-device/devices`)
 
@@ -1521,11 +1523,32 @@ GET /api/events?token=<token>
 | POST   | `/send-media`       | Send media message           | ✅   | User/Admin |
 | POST   | `/schedule-message` | Schedule a message (delayed) | ✅   | User/Admin |
 
-#### 4a. Contacts (`/api/whatsapp-multi-device/devices/:deviceId`)
+#### 4b. Scheduled Messages Management (`/api/whatsapp-multi-device`)
 
-| Method | Endpoint    | Description           | Auth | Role       |
-| ------ | ----------- | --------------------- | ---- | ---------- |
-| GET    | `/contacts` | Get contacts (device) | ✅   | User/Admin |
+| Method | Endpoint                                   | Description                    | Auth | Role       |
+| ------ | ------------------------------------------ | ------------------------------ | ---- | ---------- |
+| GET    | `/devices/:deviceId/scheduled-messages`    | List scheduled (device)        | ✅   | User/Admin |
+| GET    | `/scheduled-messages`                      | List all scheduled             | ✅   | User/Admin |
+| POST   | `/scheduled-messages/:messageId/cancel`    | Cancel scheduled msg           | ✅   | User/Admin |
+
+
+#### 4a. Contacts (WhatsApp vs Database)
+
+**WhatsApp Contacts (`/api/whatsapp-multi-device/devices/:deviceId`)**
+
+| Method | Endpoint    | Description             | Auth | Role       |
+| ------ | ----------- | ----------------------- | ---- | ---------- |
+| GET    | `/contacts` | Get contacts from WA    | ✅   | User/Admin |
+
+**Database Contacts (`/api/whatsapp-multi-device`)**
+
+| Method | Endpoint                       | Description             | Auth | Role       |
+| ------ | ------------------------------ | ----------------------- | ---- | ---------- |
+| GET    | `/contacts`                    | Get saved contacts      | ✅   | User/Admin |
+| POST   | `/contacts`                    | Save/sync contact       | ✅   | User/Admin |
+| PUT    | `/contacts/:contactId/tags`    | Update contact tags     | ✅   | User/Admin |
+| GET    | `/tags`                        | Get all user tags       | ✅   | User/Admin |
+
 
 #### 4b. Message Templates (`/api/whatsapp-multi-device/templates`)
 
@@ -1580,34 +1603,42 @@ GET /api/events?token=<token>
 | GET    | `/statistics`       | Get statistics (dengan date range) | ✅   | Admin |
 | GET    | `/statistics/daily` | Get daily activity                 | ✅   | Admin |
 
+**User Statistics (`/api/whatsapp-multi-device`)**
+
+| Method | Endpoint            | Description                        | Auth | Role       |
+| ------ | ------------------- | ---------------------------------- | ---- | ---------- |
+| GET    | `/user/statistics`  | Get personal stats                 | ✅   | User/Admin |
+
+
 #### 9. Real-time Events (`/api/events`)
 
 | Method | Endpoint | Description                            | Auth | Role       |
 | ------ | -------- | -------------------------------------- | ---- | ---------- |
 | GET    | `/`      | SSE connection untuk real-time updates | ✅   | User/Admin |
 
-#### 10. Bot Management (`/api/whatsapp-multi-device/devices/:deviceId/bot`)
+#### 10. Bot Management (`/api/bot/devices/:deviceId`)
 
-| Method | Endpoint                                | Description                               | Auth | Role       |
-| ------ | --------------------------------------- | ----------------------------------------- | ---- | ---------- |
-| GET    | `/config`                               | Get bot configuration for a device        | ✅   | User/Admin |
-| PUT    | `/config`                               | Update bot configuration for a device     | ✅   | User/Admin |
-| GET    | `/rules`                                | List auto-reply rules for a device        | ✅   | User/Admin |
-| POST   | `/rules`                                | Create a new auto-reply rule              | ✅   | User/Admin |
-| PUT    | `/rules/:ruleId`                        | Update an auto-reply rule                 | ✅   | User/Admin |
-| DELETE | `/rules/:ruleId`                        | Delete an auto-reply rule                 | ✅   | User/Admin |
-| GET    | `/handoffs`                             | List active handoff sessions              | ✅   | User/Admin |
-| POST   | `/handoffs/:contactJid/resume-bot`      | Resume bot for a contact (end handoff)    | ✅   | User/Admin |
-| GET    | `/logs`                                 | Get bot activity logs                     | ✅   | User/Admin |
+| Method | Endpoint                             | Description                               | Auth | Role       |
+| ------ | ------------------------------------ | ----------------------------------------- | ---- | ---------- |
+| GET    | `/config`                            | Get bot configuration for a device        | ✅   | User/Admin |
+| PUT    | `/config`                            | Update bot configuration for a device     | ✅   | User/Admin |
+| GET    | `/rules`                             | List auto-reply rules for a device        | ✅   | User/Admin |
+| POST   | `/rules`                             | Create a new auto-reply rule              | ✅   | User/Admin |
+| PUT    | `/rules/:ruleId`                     | Update an auto-reply rule                 | ✅   | User/Admin |
+| DELETE | `/rules/:ruleId`                     | Delete an auto-reply rule                 | ✅   | User/Admin |
+| GET    | `/handoffs`                          | List active handoff sessions              | ✅   | User/Admin |
+| POST   | `/handoffs/:contactJid/resume`       | Resume bot for a contact (end handoff)    | ✅   | User/Admin |
+| GET    | `/logs`                              | Get bot activity logs                     | ✅   | User/Admin |
+| GET    | `/stats`                             | Get bot statistics                        | ✅   | User/Admin |
 
-#### 11. Data Export (`/api/export`)
+#### 11. Data Export (`/api/admin/export`)
 
 | Method | Endpoint        | Description                               | Auth | Role  |
 | ------ | --------------- | ----------------------------------------- | ---- | ----- |
 | GET    | `/users`        | Export user data (JSON/CSV)               | ✅   | Admin |
 | GET    | `/devices`      | Export device data (JSON/CSV)             | ✅   | Admin |
 | GET    | `/messages`     | Export message history (JSON/CSV)         | ✅   | Admin |
-| GET    | `/audit-logs`   | Export audit logs (JSON/CSV)              | ✅   | Admin |
+| GET    | `/logs`         | Export audit logs (JSON/CSV)              | ✅   | Admin |
 
 #### 12. Admin Endpoints (`/api/admin`)
 
@@ -1618,7 +1649,9 @@ GET /api/events?token=<token>
 | GET    | `/users/:userId`      | Get user details                                 | ✅   | Admin |
 | PUT    | `/users/:userId`      | Update user                                      | ✅   | Admin |
 | DELETE | `/users/:userId`      | Delete user                                      | ✅   | Admin |
+| GET    | `/users/:userId/insights` | Get user insights                            | ✅   | Admin |
 | GET    | `/devices`            | List semua devices (dengan pagination & filter)  | ✅   | Admin |
+| GET    | `/devices/:deviceId/health` | Get device health check                        | ✅   | Admin |
 | GET    | `/messages`           | List semua messages (dengan pagination & filter) | ✅   | Admin |
 | GET    | `/groups`             | List semua groups                                | ✅   | Admin |
 | GET    | `/contacts`           | List semua contacts                              | ✅   | Admin |
@@ -1629,6 +1662,7 @@ GET /api/events?token=<token>
 | POST   | `/jobs/:jobId/resume` | Resume job                                       | ✅   | Admin |
 | POST   | `/jobs/:jobId/retry`  | Retry job                                        | ✅   | Admin |
 | GET    | `/logs`               | Get audit logs                                   | ✅   | Admin |
+| GET    | `/logs/filters`       | Get audit log filters                            | ✅   | Admin |
 | GET    | `/stats`              | Get global statistics                            | ✅   | Admin |
 
 ### Legacy Endpoints (Backward Compatibility)
