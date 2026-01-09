@@ -237,6 +237,38 @@ WhatsApp Service adalah backend API untuk mengelola koneksi WhatsApp dengan duku
 6. **Models Layer**: Database ORM dengan Sequelize
 7. **Database**: MySQL untuk data persistence
 8. **Baileys**: Library untuk koneksi WhatsApp Web API
+9. **Next.js Frontend**: React/Next.js client dengan Redux state management
+
+### Frontend Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Next.js App Router                   │
+│   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│   │    Pages     │  │  Components  │  │    Hooks     │  │
+│   │ (app/admin)  │  │ (BotConfig)  │  │ (useAuth)    │  │
+│   │ (app/dash)   │  │ (JobManger)  │  │ (useSocket)  │  │
+│   └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  │
+│          │                 │                 │          │
+│   ┌──────▼─────────────────▼─────────────────▼───────┐  │
+│   │                 Redux Store                      │  │
+│   │  ┌──────────┐   ┌──────────┐   ┌──────────┐      │  │
+│   │  │ Auth     │   │ Device   │   │ Bot      │      │  │
+│   │  │ Slice    │   │ Slice    │   │ Slice    │      │  │
+│   │  └──────────┘   └──────────┘   └──────────┘      │  │
+│   └────────────────────────┬─────────────────────────┘  │
+│                            │                            │
+│   ┌────────────────────────▼─────────────────────────┐  │
+│   │                   API Services                   │  │
+│   │          (Axios Interceptor + Services)          │  │
+│   └────────────────────────┬─────────────────────────┘  │
+│                            │                            │
+│   ┌────────────────────────▼─────────────────────────┐  │
+│   │               SSE Event Listener                 │  │
+│   │        (Real-time State Updates via Redux)       │  │
+│   └──────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -495,6 +527,38 @@ Incoming Msg           WhatsAppService    BotController   AutoReplySvc    Handof
      │                       │   Handoff       │               │   Session     │   Handoff   │
 ```
 
+### 7. Frontend State & Data Flow
+
+```
+User Action              Component           Redux Thunk          API Service       Redux Slice
+    │                        │                    │                    │                 │
+    │── Clicks "Connect" ───→│                    │                    │                 │
+    │                        │── Dispatch ───────→│                    │                 │
+    │                        │   connectDevice()  │                    │                 │
+    │                        │                    │── Call API ───────→│                 │
+    │                        │                    │   POST /connect    │                 │
+    │                        │                    │                    │                 │
+    │                        │                    │←─ Response ────────│                 │
+    │                        │                    │   (Pending/QR)     │                 │
+    │                        │                    │                    │                 │
+    │                        │                    │── Dispatch ───────┐                  │
+    │                        │                    │   fulfilled       │                  │
+    │                        │                    └───────────────────┼─────────────────→│
+    │                        │                                        │                  │── Update State
+    │←── UI Updates ─────────│                                        │                  │   loading: false
+    │    (Show Loading/QR)   │←───────────────────────────────────────│                  │   device: {...}
+    │                        │                                        │                  │
+    │                        │                                        │                  │
+    │ (Real-time Update)     │                                        │                  │
+    │                        │                                        │                  │
+    │ SSE Event listener ────┼──────────────────────────────────────────────────────────→│
+    │ (background)           │                                        │                  │── Update State
+    │ "qr-code"              │                                        │                  │   qr: "base64..."
+    │                        │←──────────────────────────────────────────────────────────│
+    │←── UI Updates ─────────│                                                           │
+    │    (Show QR Image)     │                                                           │
+```
+
 ---
 
 ## ✨ Fitur
@@ -701,20 +765,47 @@ ws-app/
 │   ├── .env.example                    # Example environment variables
 │   └── create-admin.js                 # Script untuk create admin user
 │
-├── frontend/                           # Frontend React application
-│   ├── app/                        # Next.js Pages & Layouts (App Router)
-│   │   ├── admin/                  # Admin dashboard pages
-│   │   ├── auth/                   # Authentication pages
-│   │   ├── contacts/               # Contact management pages
-│   │   ├── dashboard/              # User dashboard pages
-│   │   └── ...
-│   ├── components/                 # Reusable React components
-│   │   ├── admin/                  # Admin-specific components
-│   │   ├── user/                   # User-specific components
-│   │   └── ui/                     # Shared UI components
-│   ├── lib/                        # Utilities & API services
-│   ├── store/                      # Redux store & slices
-│   └── public/                     # Static assets
+├── frontend/                           # Frontend React application (Next.js)
+│   ├── app/                            # App Router Pages
+│   │   ├── admin/                      # Admin Dashboard Pages
+│   │   │   ├── dashboard/              # Stats overview
+│   │   │   ├── users/                  # User management
+│   │   │   ├── devices/                # Global device mgmt
+│   │   │   ├── messages/               # Message monitoring
+│   │   │   └── jobs/                   # Job queue monitoring
+│   │   ├── auth/                       # Authentication (Login/Register)
+│   │   ├── dashboard/                  # Consumer Dashboard Home
+│   │   ├── devices/                    # Device Management Pages
+│   │   │   ├── [id]/                   # Device Details
+│   │   │   │   ├── bot/                # **Bot Configuration URL**
+│   │   │   │   └── chat/               # Chat interface
+│   │   ├── contacts/                   # Contact Management
+│   │   ├── profile/                    # User Profile
+│   │   └── layout.tsx                  # Root Layout
+│   │
+│   ├── components/                     # React Components
+│   │   ├── admin/                      # Admin-specific components
+│   │   ├── bot/                        # **Bot & Auto-Reply Components**
+│   │   │   ├── BotConfigCard.tsx       # Config Helper
+│   │   │   ├── BotRulesTable.tsx       # Auto-reply rules editor
+│   │   │   └── BotLogsTable.tsx        # Activity logs
+│   │   ├── layout/                     # Layout Components
+│   │   │   ├── AdminSidebar.tsx        # Admin Navigation
+│   │   │   └── UserSidebar.tsx         # User Navigation
+│   │   └── ui/                         # Shadcn/UI & Reusable Components
+│   │
+│   ├── store/                          # Redux State Management
+│   │   ├── slices/
+│   │   │   ├── authSlice.ts            # Auth State
+│   │   │   ├── deviceSlice.ts          # Device & Session State
+│   │   │   ├── botSlice.ts             # **Bot Config & Rules State**
+│   │   │   ├── dashboardSlice.ts       # Stats State
+│   │   │   └── notificationSlice.ts    # Toast/Alert State
+│   │   └── index.ts                    # Store Configuration
+│   │
+│   └── lib/                            # Utilities
+│       ├── api.ts                      # Axios instance & interceptors
+│       └── sse.ts                      # EventSource handling
 │
 └── README.md                           # This file
 ```
@@ -848,6 +939,22 @@ Logic untuk transisi Bot ke Manusia:
 Logic validasi jam kerja:
 
 - `isOpen(config, timezone)` - Cek apakah saat ini jam operasional buka
+
+### 3. Frontend Modules
+
+#### Redux Slices (`store/slices/`)
+
+- **authSlice**: Manages current user session, token, and login status.
+- **deviceSlice**: Handles functionality for listing, connecting, disconnecting devices, and storing QR codes.
+- **botSlice**: Manages bot configuration, loading states for rules and logs.
+- **dashboardSlice**: Stores statistical data for charts and overview cards.
+
+#### Key Components (`components/`)
+
+- **BotConfigCard**: Form interface for basic bot settings (toggle, timezone, greeting).
+- **BotRulesTable**: Interactive table to CRUD auto-reply rules (regex/keyword, response).
+- **QRCodeDisplay**: Component to render QR code string as image and handle refresh.
+- **ChatInterface**: Real-time chat view for history and new messages.
 
 ### 3. Middleware
 
@@ -1419,6 +1526,17 @@ GET /api/events?token=<token>
 | Method | Endpoint    | Description           | Auth | Role       |
 | ------ | ----------- | --------------------- | ---- | ---------- |
 | GET    | `/contacts` | Get contacts (device) | ✅   | User/Admin |
+
+#### 4b. Message Templates (`/api/whatsapp-multi-device/templates`)
+
+| Method | Endpoint                  | Description           | Auth | Role       |
+| ------ | ------------------------- | --------------------- | ---- | ---------- |
+| GET    | `/templates`              | List templates        | ✅   | User/Admin |
+| POST   | `/templates`              | Create template       | ✅   | User/Admin |
+| PUT    | `/templates/:baseId`      | Update template       | ✅   | User/Admin |
+| DELETE | `/templates/:baseId`      | Delete template       | ✅   | User/Admin |
+| POST   | `/templates/:baseId/use`  | Use template (msg)    | ✅   | User/Admin |
+
 
 #### 5. Bulk Messaging (`/api/whatsapp-multi-device`)
 

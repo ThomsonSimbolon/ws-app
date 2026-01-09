@@ -10,9 +10,10 @@ import Button from '@/components/ui/Button';
 interface BotConfigCardProps {
   config: BotConfig | null;
   deviceId: string;
+  error?: string | null;
 }
 
-export default function BotConfigCard({ config, deviceId }: BotConfigCardProps) {
+export default function BotConfigCard({ config, deviceId, error }: BotConfigCardProps) {
   const dispatch = useAppDispatch();
   const { addToast } = useToast();
   const [isBusinessHoursOpen, setIsBusinessHoursOpen] = useState(false);
@@ -30,6 +31,22 @@ export default function BotConfigCard({ config, deviceId }: BotConfigCardProps) 
       setBusinessHours(config.businessHours || []);
     }
   }, [config]);
+
+  if (error) {
+    return (
+      <Card padding="lg">
+        <div className="bg-danger-soft border border-danger p-4 rounded-lg text-danger">
+          <h3 className="font-bold mb-2">Failed to load configuration</h3>
+          <p>{error}</p>
+          <div className="mt-4">
+             <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+               Retry
+             </Button>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   if (!config) {
     return (

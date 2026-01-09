@@ -924,6 +924,8 @@ class WhatsAppService {
         deviceInfo = {
           id: socket.user.id,
           name: socket.user.name,
+          platform: "WhatsApp Service",
+          browser: "Chrome",
         };
         logger.info(
           `📱 Phone number extracted for device ${deviceId}: ${phoneNumber}`

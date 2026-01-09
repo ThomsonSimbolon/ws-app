@@ -92,13 +92,23 @@ export default function DeviceDetailPage() {
                    <div className="p-3 bg-elevated rounded-lg">
                      <span className="text-xs text-text-muted block">Platform</span>
                      <span className="text-text-primary capitalize">
-                        {(device.deviceInfo as any)?.platform || 'Unknown'}
+                        {(() => {
+                          const info = typeof device.deviceInfo === 'string' 
+                            ? JSON.parse(device.deviceInfo) 
+                            : device.deviceInfo;
+                          return (info as any)?.platform || 'Unknown';
+                        })()}
                      </span>
                    </div>
                    <div className="p-3 bg-elevated rounded-lg">
                      <span className="text-xs text-text-muted block">Browser</span>
                      <span className="text-text-primary capitalize">
-                        {(device.deviceInfo as any)?.browser || 'Unknown'}
+                        {(() => {
+                          const info = typeof device.deviceInfo === 'string' 
+                            ? JSON.parse(device.deviceInfo) 
+                            : device.deviceInfo;
+                          return (info as any)?.browser || 'Unknown';
+                        })()}
                      </span>
                    </div>
                  </div>

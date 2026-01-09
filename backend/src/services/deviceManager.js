@@ -380,6 +380,7 @@ class DeviceManager {
               .substring(0, 19)
           : null,
       connectionAttempts: 1, // TODO: Track connection attempts
+      deviceInfo: device.deviceInfo || {},
     };
   }
 

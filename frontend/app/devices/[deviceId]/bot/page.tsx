@@ -24,7 +24,7 @@ export default function BotManagementPage() {
   const dispatch = useAppDispatch();
   const deviceId = decodeURIComponent(params?.deviceId as string);
 
-  const { config, rules, handoffs, logs, loading } = useAppSelector((state) => state.bot);
+  const { config, rules, handoffs, logs, loading, error: configError } = useAppSelector((state) => state.bot);
   const [activeTab, setActiveTab] = useState<Tab>('config');
 
   useEffect(() => {
@@ -75,7 +75,7 @@ export default function BotManagementPage() {
         {/* Tab Content */}
         <div className="min-h-[400px]">
           {activeTab === 'config' && (
-            <BotConfigCard config={config} deviceId={deviceId} />
+            <BotConfigCard config={config} deviceId={deviceId} error={configError} />
           )}
 
           {activeTab === 'rules' && (
