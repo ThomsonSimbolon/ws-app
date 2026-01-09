@@ -189,7 +189,7 @@ export default function QRCodeModal({
   // Cancel and wipe device (delete session files)
   const cancelAndWipeDevice = useCallback(async () => {
     const API_BASE_URL =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005/api";
     const token = localStorage.getItem("token");
 
     try {

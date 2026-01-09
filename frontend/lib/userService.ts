@@ -451,7 +451,7 @@ export async function sendMedia(
   try {
     // For FormData, we need to use fetch directly
     const API_BASE_URL =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005/api";
     const token =
       typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -668,7 +668,7 @@ export async function uploadProfilePhoto(
     formData.append("photo", file);
 
     const API_BASE_URL =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005/api";
     const token =
       typeof window !== "undefined" ? localStorage.getItem("token") : null;
 

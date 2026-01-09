@@ -72,7 +72,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
@@ -305,7 +305,7 @@ function MyComponent() {
 npm run dev
 ```
 
-Server runs on `http://localhost:3000`
+Server runs on `http://localhost:5173`
 
 ### Build for Production
 
@@ -403,13 +403,13 @@ Setup environment variables for your development and production environments.
 
 2. Edit `.env.local` with your configuration:
    ```env
-   NEXT_PUBLIC_API_URL=http://localhost:5000/api
+   NEXT_PUBLIC_API_URL=http://localhost:5005/api
    ```
 
 #### Available Variables
 
 - **`NEXT_PUBLIC_API_URL`** - Backend API base URL
-  - Default (development): `http://localhost:5000/api`
+  - Default (development): `http://localhost:5005/api`
   - Production: Set to your production API URL (e.g., `https://api.example.com/api`)
 
 #### Environment Files

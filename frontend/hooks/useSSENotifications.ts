@@ -154,7 +154,7 @@ export function useSSENotifications() {
       eventSourceRef.current.close();
     }
 
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005/api';
     const sseUrl = `${API_BASE_URL}/sse?token=${encodeURIComponent(token)}`;
 
     try {

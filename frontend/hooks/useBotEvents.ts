@@ -28,7 +28,7 @@ export const useBotEvents = () => {
       }
 
       // Normalize API URL to avoid double /api/api
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
       // Remove trailing slash if present
       const cleanBaseUrl = baseUrl.replace(/\/$/, '');
       // Determine correct endpoint url

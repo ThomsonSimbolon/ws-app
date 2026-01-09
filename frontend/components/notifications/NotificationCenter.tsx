@@ -19,7 +19,7 @@ export default function NotificationCenter() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   // Normalize API URL and use global events endpoint
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
   const cleanBaseUrl = baseUrl.replace(/\/$/, '');
   const eventEndpoint = cleanBaseUrl.endsWith('/api') ? '/events' : '/api/events';
   const sseUrl = `${cleanBaseUrl}${eventEndpoint}`;

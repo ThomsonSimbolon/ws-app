@@ -12,7 +12,7 @@ import { ApiError } from '@/lib/api';
 import { updateUser } from '@/store/slices/authSlice';
 import { Camera, User, Mail, Phone, FileText, Save, X } from 'lucide-react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
 export default function ProfilePage() {
   const router = useRouter();

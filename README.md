@@ -1145,9 +1145,9 @@ Logic validasi jam kerja:
    JWT_REFRESH_EXPIRES_IN=7d
 
    # Server Configuration
-   PORT=5000
+   PORT=5005
    NODE_ENV=development
-   FRONTEND_URL=http://localhost:3000
+   FRONTEND_URL=http://localhost:5173
 
    # Database Auto Setup
    AUTO_CREATE_TABLES=true
@@ -1173,7 +1173,7 @@ Logic validasi jam kerja:
    npm run dev
    ```
 
-Server akan berjalan di `http://localhost:5000`
+Server akan berjalan di `http://localhost:5005`
 
 ### Frontend Setup
 
@@ -1190,7 +1190,7 @@ Server akan berjalan di `http://localhost:5000`
    npm run dev
    ```
 
-   Frontend akan berjalan di `http://localhost:3000`
+   Frontend akan berjalan di `http://localhost:5173`
 
 ---
 
@@ -1209,8 +1209,8 @@ Server akan berjalan di `http://localhost:5000`
 | `JWT_REFRESH_SECRET`     | JWT refresh secret (min 32 chars) | -                       | ✅       |
 | `JWT_EXPIRES_IN`         | JWT token expiration              | `24h`                   | ❌       |
 | `JWT_REFRESH_EXPIRES_IN` | Refresh token expiration          | `7d`                    | ❌       |
-| `PORT`                   | Server port                       | `5000`                  | ❌       |
-| `FRONTEND_URL`           | Frontend URL untuk CORS           | `http://localhost:3000` | ❌       |
+| `PORT`                   | Server port                       | `5005`                  | ❌       |
+| `FRONTEND_URL`           | Frontend URL untuk CORS           | `http://localhost:5173` | ❌       |
 | `NODE_ENV`               | Environment mode                  | `development`           | ❌       |
 | `AUTO_CREATE_TABLES`     | Auto create tables on startup     | `true`                  | ❌       |
 
@@ -1218,7 +1218,7 @@ Server akan berjalan di `http://localhost:5000`
 
 CORS dikonfigurasi di `src/app.js` untuk mengizinkan request dari frontend. Default:
 
-- `http://localhost:3000`
+- `http://localhost:5173`
 - `http://localhost:3001`
 - `http://localhost:3002`
 
@@ -1293,7 +1293,7 @@ cd backend
 npm run dev
 ```
 
-Server akan berjalan di `http://localhost:5000` dengan auto-reload menggunakan nodemon.
+Server akan berjalan di `http://localhost:5005` dengan auto-reload menggunakan nodemon.
 
 **Features:**
 
@@ -1330,7 +1330,7 @@ docker-compose down
 ### Health Check
 
 ```bash
-curl http://localhost:5000/api/health
+curl http://localhost:5005/api/health
 ```
 
 **Response:**
@@ -1350,7 +1350,7 @@ curl http://localhost:5000/api/health
 ### Base URL
 
 ```
-http://localhost:5000/api
+http://localhost:5005/api
 ```
 
 ### Authentication
@@ -2556,7 +2556,7 @@ File `.env` untuk production:
 
 ```env
 NODE_ENV=production
-PORT=5000
+PORT=5005
 
 # Database (Production)
 DB_HOST=production-db-host
@@ -2588,7 +2588,7 @@ server {
     server_name api.yourdomain.com;
 
     location / {
-        proxy_pass http://localhost:5000;
+        proxy_pass http://localhost:5005;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -2801,7 +2801,7 @@ Authorization: Bearer <token>
 ```javascript
 // Frontend example
 const eventSource = new EventSource(
-  `http://localhost:5000/api/events?token=${token}`
+  `http://localhost:5005/api/events?token=${token}`
 );
 
 eventSource.onmessage = (event) => {
