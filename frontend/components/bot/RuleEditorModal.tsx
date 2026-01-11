@@ -43,9 +43,10 @@ export default function RuleEditorModal({ isOpen, onClose, onSave, initialRule }
     }
   }, [isOpen, initialRule]);
 
-  if (!isOpen) return null;
-
+  // useToast must be called before any early return (Rules of Hooks)
   const { addToast } = useToast();
+
+  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

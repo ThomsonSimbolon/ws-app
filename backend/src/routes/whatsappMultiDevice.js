@@ -135,18 +135,18 @@ router.post(
   whatsappMultiDeviceController.sendMedia
 );
 
-// Job Management Routes (Admin Only - Bulk Messaging)
+// Job Management Routes (User can create jobs for their own devices)
 router.post(
   "/devices/:deviceId/jobs/send-text",
   authenticateToken,
-  requireAdmin, // Admin only - Bulk messaging requires admin
+  requireUser, // User can create bulk text jobs for their own devices (ownership checked in controller)
   whatsappMultiDeviceController.createSendTextJob
 );
 
 router.post(
   "/devices/:deviceId/jobs/send-media",
   authenticateToken,
-  requireAdmin, // Admin only - Bulk media messaging requires admin
+  requireUser, // User can create bulk media jobs for their own devices (ownership checked in controller)
   whatsappMultiDeviceController.createSendMediaJob
 );
 
@@ -162,6 +162,14 @@ router.post(
   authenticateToken,
   requireUser, // Admin & User can cancel their own jobs (ownership checked in controller)
   whatsappMultiDeviceController.cancelJob
+);
+
+// User Jobs List - List all jobs for user's devices
+router.get(
+  "/jobs",
+  authenticateToken,
+  requireUser,
+  whatsappMultiDeviceController.listUserJobs
 );
 
 // Group Management Routes (Admin Only)

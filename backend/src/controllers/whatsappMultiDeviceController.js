@@ -4389,6 +4389,69 @@ const getUserStatistics = async (req, res) => {
   }
 };
 
+/**
+ * List jobs for user (only jobs belonging to user's devices)
+ */
+const listUserJobs = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { status, type, limit = 50 } = req.query;
+
+    // Get all user's devices
+    const userDevices = await WhatsAppSession.findAll({
+      where: { userId: userId },
+      attributes: ['deviceId']
+    });
+
+    const userDeviceIds = userDevices.map(d => d.deviceId);
+
+    if (userDeviceIds.length === 0) {
+      const { response, statusCode } = successResponse({
+        jobs: [],
+        total: 0
+      });
+      return res.status(statusCode).json(response);
+    }
+
+    // Get all jobs and filter by user's devices
+    const allJobs = jobQueueService.getJobs({ status, type });
+    
+    const userJobs = allJobs
+      .filter(job => userDeviceIds.includes(job.data?.deviceId))
+      .slice(0, parseInt(limit) || 50)
+      .map(job => ({
+        id: job.id,
+        type: job.type,
+        deviceId: job.data?.deviceId,
+        status: job.status,
+        progress: {
+          total: job.progress?.total || 0,
+          completed: job.progress?.completed || 0,
+          failed: job.progress?.failed || 0
+        },
+        createdAt: job.createdAt ? new Date(job.createdAt).toISOString() : null,
+        startedAt: job.startedAt ? new Date(job.startedAt).toISOString() : null,
+        completedAt: job.completedAt ? new Date(job.completedAt).toISOString() : null,
+        error: job.error || null
+      }));
+
+    const { response, statusCode } = successResponse({
+      jobs: userJobs,
+      total: userJobs.length
+    });
+
+    res.status(statusCode).json(response);
+  } catch (error) {
+    logger.error("List user jobs error:", error);
+    const { response, statusCode } = errorResponse(
+      "Gagal mendapatkan daftar job",
+      error.message,
+      500
+    );
+    res.status(statusCode).json(response);
+  }
+};
+
 module.exports = {
   createDevice,
   listDevices,
@@ -4439,5 +4502,6 @@ module.exports = {
   deleteTemplate,
   useTemplate,
   getUserStatistics,
+  listUserJobs,
 };
 

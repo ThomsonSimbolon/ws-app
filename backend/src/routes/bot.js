@@ -7,9 +7,11 @@ const express = require("express");
 const router = express.Router();
 const botController = require("../controllers/botController");
 const authenticateToken = require("../middleware/auth");
+const { requireUser } = require("../middleware/authorize");
 
-// All routes require authentication
+// All routes require authentication and valid user/admin role
 router.use(authenticateToken);
+router.use(requireUser);
 
 // ==================== DEVICE BOT CONFIG ====================
 

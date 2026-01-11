@@ -383,7 +383,7 @@ Client                     Express Server      WhatsAppService    Baileys       
   │     { messageId, status }    │                    │               │                │
 ```
 
-### 4. Bulk Messaging Flow (Job Queue)
+### 4. Chat Blast / Bulk Messaging Flow (Job Queue)
 
 ```
 Admin Client           Express Server      JobQueueService   WhatsAppService    Database
@@ -490,7 +490,7 @@ Client                     Express Server      WhatsAppService    Event System
   │                              │                    │                  │
 ```
 
-### 6. Bot Auto-Reply & Handoff Flow
+### 6. Bot Auto-Reply (Pesan Otomatis) & Handoff (Bot Dukungan) Flow
 
 ```
 Incoming Msg           WhatsAppService    BotController   AutoReplySvc    HandoffSvc     Database
@@ -563,72 +563,99 @@ User Action              Component           Redux Thunk          API Service   
 
 ## ✨ Fitur
 
-### Core Features
+### User Features (Sidebar Menu)
 
-- ✅ **Multi-device Support**: Satu user dapat memiliki banyak device/akun WhatsApp
-- ✅ **QR Code Authentication**: Scan QR code untuk connect device
-- ✅ **Auto-restore Session**: Session otomatis di-restore saat server restart
-- ✅ **Device Management**: Create, list, connect, disconnect, delete device
-- ✅ **Role-Based Access**: Admin dan User dengan permission berbeda
+Fitur yang dapat diakses oleh semua pengguna terdaftar:
 
-### Messaging
+1. **Dashboard** (`/dashboard`)
+   - Overview status device dan koneksi
+   - Statistik pesan harian (Sent/Received)
+   - Ringkasan aktivitas terbaru
 
-- ✅ **Send Text Messages**: Kirim pesan teks ke kontak
-- ✅ **Send Media Messages**: Kirim gambar, video, dokumen (placeholder)
-- ✅ **Bulk Messaging**: Kirim pesan ke banyak kontak sekaligus
-- ✅ **Job Queue**: Async processing dengan status tracking
-- ✅ **Job Cancellation**: Cancel job yang sedang berjalan
-- ✅ **Group Messaging**: Kirim pesan ke grup
+2. **My Devices** (`/devices`)
+   - **Connect Device**: Scan QR code untuk menghubungkan WhatsApp
+   - **Device Status**: Monitor status koneksi (Connected, Disconnected)
+   - **Bot Configuration**: Atur auto-reply, jam kerja, dan handoff per device
+   - **Device Settings**: Kelola session dan logout
 
-### Group Management
+3. **Send Message** (`/send-message`)
+   - Kirim pesan teks single secara instan
+   - Validasi format nomor telepon
 
-- ✅ **List Groups**: Daftar semua grup WhatsApp
-- ✅ **Create Group**: Buat grup baru
-- ✅ **Get Group Info**: Info detail grup (participants, admins, etc.)
-- ✅ **Send Group Messages**: Kirim pesan ke grup
-- ✅ **Manage Participants**: Invite/Kick participants
-- ✅ **Manage Admins**: Promote/Demote admins
+4. **Schedule Message** (`/schedule-message`)
+   - Jadwalkan pesan untuk dikirim otomatis di waktu tertentu
+   - Daftar pesan terjadwal status (Pending, Sent, Failed)
+   - Opsi pembatalan pesan
 
-### Chat History
+5. **Chat Blast** (`/chat-blast`)
+   - **Bulk Messaging**: Kirim pesan massal (Broadcast)
+   - **Media Support**: Kirim gambar dan file dalam blast
+   - **Targeting**: Input nomor manual atau dari kontak tersimpan
 
-- ✅ **Contact Chat History**: Riwayat chat dengan kontak
-- ✅ **Group Chat History**: Riwayat chat grup
-- ✅ **Daily Chat List**: Daftar chat per hari
-- ✅ **Message Pagination**: Pagination untuk performa
+6. **My Jobs** (`/jobs`)
+   - **Job Monitoring**: Pantau progress pengiriman blast users
+   - **Control**: Pause, Resume, atau Cancel job sendiri
+   - **Error Insight**: Lihat detail error untuk pesan yang gagal
 
-### Statistics & Analytics
+7. **Contacts** (`/contacts`)
+   - Manajemen buku kontak pribadi
+   - Tagging dan grouping kontak
+   - Sinkronisasi kontak (jika diaktifkan)
 
-- ✅ **Daily Activity Tracking**: Tracking aktivitas harian
-- ✅ **Messages Statistics**: Statistik pesan masuk/keluar
-- ✅ **Active Chats Tracking**: Tracking chat aktif
-- ✅ **Response Rate Calculation**: Perhitungan response rate
-- ✅ **Device Statistics**: Statistik per device
+8. **Activity** (`/activity`)
+   - Log aktivitas personal
+   - Riwayat penggunaan fitur
 
-### Admin Features
+9. **Chat History** (`/chat-history`)
+   - Akses riwayat pesan yang tersinkronisasi
+   - Filter chat berdasarkan tanggal atau kontak
 
-- ✅ **User Management**: CRUD operations untuk users
-- ✅ **Device Management**: Monitor dan manage semua devices
-- ✅ **Message Management**: Monitor semua messages
-- ✅ **Global Statistics**: Statistik global sistem
-- ✅ **Role Management**: Manage user roles
+### Admin Features (Sidebar Menu)
 
-### Scheduled Messaging
+Fitur khusus untuk role Admin:
 
-- ✅ **Schedule Text Messages**: Jadwalkan pengiriman pesan di waktu tertentu
-- ✅ **Schedule Management**: Monitor, cancel, dan track status pesan terjadwal
-- ✅ **Auto-Processing**: Background job runner untuk mengirim pesan sesuai jadwal
+1. **Dashboard** (`/dashboard`)
+   - Overview status device dan koneksi
+   - Statistik pesan harian (Sent/Received)
+   - Ringkasan aktivitas terbaru
 
-### Bot & Auto Reply
+2. **Users** (`/admin/users`)
+   - User Management: Create, Edit, Lock, Delete User
+   - Reset Password User
+   - View User Details & Limits
 
-- ✅ **Smart Auto Reply**: Balas pesan otomatis berdasarkan keyword atau pola (Regex)
-- ✅ **Business Hours**: Atur jam operasional dengan pesan otomatis di luar jam kerja
-- ✅ **Handoff Protocol**: Transisi mulus dari Bot ke Agent manusia
-- ✅ **Bot Analytics**: Tracking performa bot dan handoff history
+3. **Devices** (`/admin/devices`)
+   - Global Device Monitoring: Lihat semua device di sistem
+   - Administrative Controls: Force disconnect/wipe device
 
-### Data Management
+4. **Messages** (`/admin/messages`)
+   - Global Message Log: Audit semua pesan masuk/keluar sistem
+   - Status tracking untuk troubleshooting
 
-- ✅ **Data Export**: Export users, devices, messages, dan logs ke CSV/JSON
-- ✅ **Audit Trails**: Log aktivitas lengkap untuk keamanan dan audit
+5. **Groups** (`/admin/groups`)
+   - Group Management: List dan manage grup WhatsApp
+   - Broadcast ke Grup
+
+6. **Contacts** (`/admin/contacts`)
+   - Global Contact Management: Lihat semua kontak di sistem
+   - Filter kontak berdasarkan User/Device
+
+7. **Jobs** (`/admin/jobs`)
+   - Global Job Queue: Monitor antrian sistem
+   - Priority Control: Pause/Resume jobs sistem
+   - Performance Monitoring
+
+8. **Analytics** (`/analytics`)
+   - System-wide Analytics Dashboard
+   - Export Data (Users, Devices, Logs)
+   - System Health Metrics
+
+### Core Capabilities
+
+- **Multi-Device**: Dukungan untuk banyak device per user
+- **Bot & Auto Reply**: Logic penjawab otomatis dengan Regex dan Keyword
+- **Handoff System**: Transisi mulus dari Bot ke Agent manusia
+- **Data Export**: Kemampuan export data ke JSON/CSV
 
 ---
 
@@ -773,13 +800,20 @@ ws-app/
 │   │   │   ├── devices/                # Global device mgmt
 │   │   │   ├── messages/               # Message monitoring
 │   │   │   └── jobs/                   # Job queue monitoring
+│   │   ├── analytics/                  # **New** Data Analysis & Export
 │   │   ├── auth/                       # Authentication (Login/Register)
 │   │   ├── dashboard/                  # Consumer Dashboard Home
 │   │   ├── devices/                    # Device Management Pages
 │   │   │   ├── [id]/                   # Device Details
 │   │   │   │   ├── bot/                # **Bot Configuration URL**
 │   │   │   │   └── chat/               # Chat interface
+│   │   ├── send-message/               # Single Message Page
+│   │   ├── schedule-message/           # Scheduled Messages
+│   │   ├── chat-blast/                 # **New** Bulk Messaging (Blast) Page
+│   │   ├── jobs/                       # User Job Monitoring
 │   │   ├── contacts/                   # Contact Management
+│   │   ├── activity/                   # **New** User Activity Log
+│   │   ├── chat-history/               # Chat History View
 │   │   ├── profile/                    # User Profile
 │   │   └── layout.tsx                  # Root Layout
 │   │
@@ -1565,8 +1599,9 @@ GET /api/events?token=<token>
 
 | Method | Endpoint                             | Description           | Auth | Role       |
 | ------ | ------------------------------------ | --------------------- | ---- | ---------- |
-| POST   | `/devices/:deviceId/jobs/send-text`  | Create bulk text job  | ✅   | Admin      |
-| POST   | `/devices/:deviceId/jobs/send-media` | Create bulk media job | ✅   | Admin      |
+| POST   | `/devices/:deviceId/jobs/send-text`  | Create bulk text job  | ✅   | User/Admin |
+| POST   | `/devices/:deviceId/jobs/send-media` | Create bulk media job | ✅   | User/Admin |
+| GET    | `/jobs`                              | List user jobs        | ✅   | User/Admin |
 | GET    | `/jobs/:jobId`                       | Get job status        | ✅   | User/Admin |
 | POST   | `/jobs/:jobId/cancel`                | Cancel job            | ✅   | User/Admin |
 
