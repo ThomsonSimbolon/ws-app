@@ -311,6 +311,13 @@ class JobQueueService {
       return Job.findByPk(jobId, { include: ['items'] });
   }
 
+  async getAllJobs(filters = {}) {
+    const whereClause = {};
+    if (filters.status) whereClause.status = filters.status;
+    if (filters.type) whereClause.type = filters.type;
+    return Job.findAll({ where: whereClause, order: [['created_at', 'DESC']] });
+  }
+
   async getUserJobs(userId) {
       return Job.findAll({ where: { userId }, order: [['created_at', 'DESC']] });
   }

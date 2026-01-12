@@ -977,7 +977,7 @@ const listJobs = async (req, res) => {
     if (status) filter.status = status;
     if (type) filter.type = type;
 
-    let jobs = jobQueueService.getJobs(filter);
+    let jobs = await jobQueueService.getAllJobs(filter);
 
     // Limit results
     if (limit) {

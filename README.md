@@ -34,6 +34,24 @@ Backend service untuk WhatsApp Business dengan dukungan multi-device menggunakan
 
 ## ✨ Update Terbaru
 
+### Versi 1.3.3 (Januari 2026 - Critical Fixes & Stability) 🚑
+
+#### Critical Fixes
+1.  **Authentication & Redirect Loop Fix (P0)**
+    -   **Frontend**: Implementasi `credentials: 'include'` pada fetch API untuk persistensi HttpOnly Cookie.
+    -   **Middleware**: Hardcoded JWT Secret di Edge Runtime untuk mengatasi isu environment variable loading.
+    -   **Login Page**: Menggunakan `window.location.href` (Hard Redirect) menggantikan `router.push` untuk memastikan cookie terkirim sempurna ke server.
+    
+2.  **Job Queue System Repair (P0)**
+    -   **Backend Controller**: Perbaikan method call dari `getJobs` (non-existent) menjadi `getUserJobs` pada User Panel.
+    -   **Admin Controller**: Penambahan method `getAllJobs` pada Service Layer dan implementasi yang benar pada Admin Controller untuk mengatasi 500 Server Error.
+    -   **API Consistency**: Penyesuaian endpoint frontend `My Jobs` ke path yang benar (`/whatsapp-multi-device/jobs`).
+
+3.  **UI/UX Improvements**
+    -   **My Jobs Icon**: Penggantian raw Emoticon 📭 menjadi `Inbox` icon dari `lucide-react` untuk konsistensi visual.
+
+---
+
 ### Versi 1.3.2 (Januari 2026 - Production Hardening) 🔒
 
 #### Fitur Baru & Improvement
@@ -2518,6 +2536,7 @@ async getDevice(req, res) {
 
 - `POST /api/whatsapp-multi-device/devices/:deviceId/jobs/send-text` - Create bulk text job
 - `POST /api/whatsapp-multi-device/devices/:deviceId/jobs/send-media` - Create bulk media job
+- `GET /api/whatsapp-multi-device/jobs` - List user jobs
 - `GET /api/whatsapp-multi-device/jobs/:jobId` - Get job status
 - `POST /api/whatsapp-multi-device/jobs/:jobId/cancel` - Cancel job
 
