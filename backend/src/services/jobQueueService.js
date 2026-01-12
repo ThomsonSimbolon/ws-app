@@ -1,691 +1,319 @@
-const logger = require("../utils/logger");
-
-// Lazy-load whatsappService to avoid circular dependency
-let whatsappService = null;
-const getWhatsAppService = () => {
-  if (!whatsappService) {
-    whatsappService = require("./whatsappService");
-  }
-  return whatsappService;
-};
-
 /**
- * Job Queue Service
+ * Job Queue Service (Refactored for Persistence)
+ * Manages bulk messaging jobs using MySQL for state and idempotency.
  * 
- * Manages async job processing for bulk messaging and other async operations
- * - Job storage (in-memory)
- * - Job status tracking
- * - Job cancellation support
- * - Delay management
- * - Async processing
- * - Real-time SSE progress broadcasting
+ * Features:
+ * - Persistent Storage (Jobs table)
+ * - Row-level Idempotency (JobItems table)
+ * - Crash Recovery (Resets processing -> queued)
+ * - Pause/Resume/Cancel support
  */
+
+const { Job, JobItem, Message, WhatsAppSession } = require("../models");
+const whatsappService = require("./whatsappService");
+const logger = require("../utils/logger");
+const { Op } = require("sequelize");
+
 class JobQueueService {
   constructor() {
-    // Job storage (in-memory)
-    // In production, consider using Redis or database for persistence
-    this.jobs = new Map(); // jobId -> job object
-    
-    // Active workers
-    this.workers = new Map(); // jobId -> worker info
-    
-    // Job counter
-    this.jobCounter = 0;
-
-    // Batched SSE update tracking
-    this.pendingSSEUpdates = new Map(); // jobId -> last broadcast time
-    this.SSE_UPDATE_INTERVAL = 1500; // 1.5 seconds between updates
+    this.isProcessing = false;
+    // Check for jobs every 5 seconds
+    setInterval(() => this.processQueue(), 5000);
   }
 
   /**
-   * Broadcast job progress via SSE (batched to avoid overwhelming clients)
-   * @param {Object} job - Job object
-   * @param {boolean} force - Force immediate broadcast (for status changes)
+   * Create a new bulk message job
    */
-  broadcastJobProgress(job, force = false) {
-    const now = Date.now();
-    const lastBroadcast = this.pendingSSEUpdates.get(job.id) || 0;
+  async createJob(userId, deviceId, type, data, recipients) {
+    try {
+      if (!recipients || recipients.length === 0) {
+        throw new Error("Recipients list cannot be empty");
+      }
 
-    // Skip if we broadcast recently (unless forced)
-    if (!force && (now - lastBroadcast) < this.SSE_UPDATE_INTERVAL) {
+      // Create Job
+      const job = await Job.create({
+        userId,
+        deviceId,
+        type,
+        status: "queued",
+        data,
+        progress: {
+          total: recipients.length,
+          sent: 0,
+          failed: 0,
+        },
+      });
+
+      // Create Job Items (Bulk Insert)
+      const jobItems = recipients.map((recipient) => ({
+        jobId: job.id,
+        recipient: typeof recipient === "string" ? recipient : recipient.phone,
+        status: "pending",
+      }));
+
+      await JobItem.bulkCreate(jobItems);
+
+      logger.info(`📝 Job created: ${job.id} with ${recipients.length} recipients`);
+      
+      // Trigger processing immediately
+      this.processQueue();
+
+      return job;
+    } catch (error) {
+      logger.error("❌ Error creating job:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Main Queue Processor
+   * Picks next 'queued' job and processes it.
+   */
+  async processQueue() {
+    if (this.isProcessing) return;
+
+    try {
+      this.isProcessing = true;
+
+      // Find next queued job (FIFO)
+      const job = await Job.findOne({
+        where: { status: "queued" },
+        order: [["created_at", "ASC"]],
+        include: [
+          { model: JobItem, as: "items" } // Eager load not ideal for huge jobs, but okay for moderate <1000
+        ]
+      });
+
+      if (!job) {
+        this.isProcessing = false;
+        return;
+      }
+
+      logger.info(`🔄 Starting processing for job ${job.id}`);
+
+      // Lock Job
+      await job.update({ status: "processing" });
+
+      // Process the job
+      await this.processJob(job);
+
+    } catch (error) {
+      logger.error("❌ Error in processQueue:", error);
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  /**
+   * Process a specific job
+   * Iterates through items and sends messages.
+   * STRICT IDEMPOTENCY: Only processes 'pending' items.
+   */
+  async processJob(job) {
+    const { deviceId, type, data } = job;
+    let successCount = job.progress.sent || 0;
+    let failureCount = job.progress.failed || 0;
+
+    // Get socket for device
+    const socket = whatsappService.sessions.get(deviceId);
+    
+    // Validate session
+    if (!socket) {
+      logger.error(`❌ Device ${deviceId} not connected. Pausing job ${job.id}`);
+      await job.update({ 
+        status: "paused", 
+        error: "Device disconnected during processing" 
+      });
       return;
     }
 
-    this.pendingSSEUpdates.set(job.id, now);
+    // Fetch ONLY pending items to avoid re-processing sent ones
+    // We fetch in batches to handle memory better if needed, but for now fetch all pending
+    const pendingItems = await JobItem.findAll({
+      where: {
+        jobId: job.id,
+        status: "pending"
+      }
+    });
 
-    try {
-      const ws = getWhatsAppService();
-      ws.broadcastJobProgress(job);
-    } catch (error) {
-      logger.warn(`⚠️ Failed to broadcast job progress for ${job.id}:`, error.message);
-    }
-  }
+    logger.info(`📊 Job ${job.id}: Found ${pendingItems.length} pending items`);
 
+    for (const item of pendingItems) {
+      // 1. RE-CHECK JOB STATUS (Crucial for Pause/Cancel)
+      const currentJobStatus = await Job.findByPk(job.id, { attributes: ['status'] });
+      if (currentJobStatus.status !== "processing") {
+        logger.info(`⏸️ Job ${job.id} was ${currentJobStatus.status}. Stopping loop.`);
+        return;
+      }
 
-  /**
-   * Generate unique job ID
-   */
-  generateJobId() {
-    this.jobCounter++;
-    return `job-${Date.now()}-${this.jobCounter}`;
-  }
+      try {
+        // 2. SAFETY DELAY (Rate Limit Protection)
+        // 2 seconds delay = ~30 msgs/min (Safe)
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
-  /**
-   * Create a new job
-   * @param {string} type - Job type (e.g., 'send-text', 'send-media')
-   * @param {Object} data - Job data
-   * @param {Object} options - Job options (delay, etc.)
-   * @returns {string} Job ID
-   */
-  createJob(type, data, options = {}) {
-    const jobId = this.generateJobId();
-    
-    const job = {
-      id: jobId,
-      type: type,
-      status: 'queued', // queued, processing, completed, failed, cancelled
-      data: data,
-      options: {
-        delay: options.delay || 3, // Default 3 seconds delay between messages
-        ...options
-      },
-      progress: {
-        total: data.messages ? data.messages.length : 1,
-        completed: 0,
-        failed: 0
-      },
-      result: null,
-      error: null,
-      createdAt: new Date(),
-      startedAt: null,
-      completedAt: null,
-    };
+        let sentMessageId = null;
 
-    this.jobs.set(jobId, job);
-    logger.info(`📦 Created job ${jobId} (type: ${type})`);
+        // 3. SEND MESSAGE
+        if (type === "send-text") {
+          // Detect if simple message or bulk-unique
+          let msgContent = data.message;
+          
+          // If data.messages exists (bulk unique), find the one for this recipient
+          if (data.messages && Array.isArray(data.messages)) {
+             const foundMsg = data.messages.find(m => (m.to === item.recipient || m.phone === item.recipient));
+             if (foundMsg) msgContent = foundMsg.message;
+          }
+          
+          const sent = await whatsappService.sendMessage(deviceId, item.recipient, msgContent);
+          sentMessageId = sent?.key?.id;
+          
+        } else if (type === "send-media") {
+           // For media, data.items contains the payload
+           let mediaItem = data; // Fallback
+           
+           if (data.items && Array.isArray(data.items)) {
+              mediaItem = data.items.find(i => (i.to === item.recipient || i.phoneNumber === item.recipient));
+           }
+           
+           if (mediaItem) {
+               // We need media buffer. In controller we used `sendMediaFn` which handled buffer.
+               // Now we are in Service. The buffers are NOT in DB.
+               // CRITICAL: We cannot store Buffers in JSON DB.
+               // The Controller `createSendMediaJob` passed `sendMediaFn` wrapper previously.
+               // Now we are persistent.
+               
+               // If item.base64 or item.url is present, we can re-download/re-buffer.
+               // If it was a generic "upload single file for all", we need that file path or URL.
+               
+               // In `createSendMediaJob`:
+               // It validates `base64` or `url`.
+               // So we can use `whatsappService.downloadMediaFromURL` or `Buffer.from(base64)`.
+               
+               let mediaBuffer;
+               let fileName = mediaItem.fileName;
+               let mimetype = mediaItem.mimetype; // Should be saved in createJob
+               let mediaType = mediaItem.mediaType;
 
-    // Start processing if not explicitly set to manual
-    if (options.autoStart !== false) {
-      this.processJob(jobId).catch(error => {
-        logger.error(`❌ Error processing job ${jobId}:`, error);
+               if (mediaItem.base64) {
+                 const base64Data = mediaItem.base64.startsWith("data:")
+                    ? mediaItem.base64.split(",")[1]
+                    : mediaItem.base64;
+                 mediaBuffer = Buffer.from(base64Data, "base64");
+               } else if (mediaItem.url) {
+                 mediaBuffer = await whatsappService.downloadMediaFromURL(mediaItem.url);
+               } else {
+                 throw new Error("No media source (URL or Base64) found for persistent job");
+               }
+               
+               // Derive mimetype if missing
+               if (!mimetype) {
+                  switch(mediaType) {
+                    case 'image': mimetype = 'image/jpeg'; break;
+                    case 'video': mimetype = 'video/mp4'; break;
+                    case 'document': mimetype = 'application/pdf'; break;
+                  }
+               }
+               
+               const sent = await whatsappService.sendMediaForDevice(
+                  deviceId, 
+                  item.recipient, 
+                  mediaType, 
+                  mediaBuffer, 
+                  mediaItem.caption,
+                  fileName,
+                  mimetype
+               );
+               sentMessageId = sent?.key?.id;
+           } else {
+               throw new Error("Media item data not found in job payload");
+           }
+        }
+
+        // 4. ATOMIC UPDATE (Idempotency Success)
+        await item.update({
+          status: "sent",
+          messageId: sentMessageId || "unknown",
+          processedAt: new Date()
+        });
+
+        successCount++;
+
+      } catch (error) {
+        logger.error(`❌ Failed to send to ${item.recipient}: ${error.message}`);
+        
+        // 5. ATOMIC UPDATE (Idempotency Failure)
+        // We do NOT retry indefinitely in this loop. "Skip and Log".
+        await item.update({
+          status: "failed",
+          error: error.message,
+          processedAt: new Date()
+        });
+
+        failureCount++;
+      }
+
+      // 6. UPDATE PROGRESS
+      await job.update({
+        progress: {
+          total: job.progress.total,
+          sent: successCount,
+          failed: failureCount
+        }
       });
     }
 
-    return jobId;
+    // 7. FINALIZE JOB
+    await job.update({ status: "completed" });
+    logger.info(`✅ Job ${job.id} completed. Sent: ${successCount}, Failed: ${failureCount}`);
   }
 
   /**
-   * Get job by ID
-   * @param {string} jobId - Job ID
-   * @returns {Object|null} Job object
+   * Cancel a Job
    */
-  getJob(jobId) {
-    return this.jobs.get(jobId) || null;
+  async cancelJob(jobId, userId) {
+     const job = await Job.findOne({ where: { id: jobId, userId } });
+     if (!job) throw new Error("Job not found");
+
+     // If processing, the loop will stop on next iteration
+     await job.update({ status: "cancelled" });
+     return job;
   }
 
   /**
-   * Get all jobs (with optional filter)
-   * @param {Object} filter - Filter options (status, type)
-   * @returns {Array} Array of job objects
+   * Pause a Job
    */
-  getJobs(filter = {}) {
-    let jobs = Array.from(this.jobs.values());
+  async pauseJob(jobId, userId) {
+    const job = await Job.findOne({ where: { id: jobId, userId } });
+    if (!job) throw new Error("Job not found");
 
-    if (filter.status) {
-      jobs = jobs.filter(job => job.status === filter.status);
+    if (job.status === 'processing' || job.status === 'queued') {
+      await job.update({ status: "paused" });
     }
-
-    if (filter.type) {
-      jobs = jobs.filter(job => job.type === filter.type);
-    }
-
-    // Sort by createdAt (newest first)
-    jobs.sort((a, b) => b.createdAt - a.createdAt);
-
-    return jobs;
+    return job;
   }
 
   /**
-   * Cancel a job
-   * @param {string} jobId - Job ID
-   * @returns {boolean} True if cancelled successfully
+   * Resume a Job
    */
-  cancelJob(jobId) {
-    const job = this.jobs.get(jobId);
-    
-    if (!job) {
-      throw new Error(`Job ${jobId} not found`);
-    }
+  async resumeJob(jobId, userId) {
+    const job = await Job.findOne({ where: { id: jobId, userId } });
+    if (!job) throw new Error("Job not found");
 
-    if (job.status === 'completed' || job.status === 'cancelled') {
-      return false; // Already finished
+    if (job.status === 'paused') {
+      await job.update({ status: "queued" });
+      this.processQueue(); // Trigger immediately
     }
-
-    job.status = 'cancelled';
-    job.completedAt = new Date();
-    
-    // Stop worker if running
-    if (this.workers.has(jobId)) {
-      const worker = this.workers.get(jobId);
-      if (worker.cancelled) {
-        worker.cancelled = true;
-      }
-      this.workers.delete(jobId);
-    }
-
-    logger.info(`🚫 Cancelled job ${jobId}`);
-    this.broadcastJobProgress(job, true); // Force immediate broadcast
-    return true;
+    return job;
+  }
+  
+  // Public Getters for Controllers
+  async getJob(jobId) {
+      return Job.findByPk(jobId, { include: ['items'] });
   }
 
-  /**
-   * Pause a job
-   * @param {string} jobId - Job ID
-   * @returns {boolean} True if paused successfully
-   */
-  pauseJob(jobId) {
-    const job = this.jobs.get(jobId);
-    
-    if (!job) {
-      throw new Error(`Job ${jobId} not found`);
-    }
-
-    if (job.status !== 'queued' && job.status !== 'processing') {
-      return false; // Can only pause queued or processing jobs
-    }
-
-    job.status = 'paused';
-    
-    // Worker loop will detect status change and stop
-    logger.info(`II Paused job ${jobId}`);
-    this.broadcastJobProgress(job, true); // Force immediate broadcast
-    return true;
-  }
-
-  /**
-   * Resume a job
-   * @param {string} jobId - Job ID
-   * @returns {boolean} True if resumed successfully
-   */
-  resumeJob(jobId) {
-    const job = this.jobs.get(jobId);
-    
-    if (!job) {
-      throw new Error(`Job ${jobId} not found`);
-    }
-
-    if (job.status !== 'paused') {
-      return false; // Can only resume paused jobs
-    }
-
-    job.status = 'queued'; // Re-queue it
-    logger.info(`▶️ Resuming job ${jobId}`);
-    this.broadcastJobProgress(job, true); // Force immediate broadcast
-
-    // Restart processing (processJob handles resuming logic)
-    this.processJob(jobId).catch(error => {
-      logger.error(`❌ Error resuming job ${jobId}:`, error);
-    });
-
-    return true;
-  }
-
-  /**
-   * Retry a failed job (creates a new job with failed items)
-   * @param {string} jobId - Original Job ID
-   * @returns {string} New Job ID
-   */
-  retryJob(jobId) {
-    const oldJob = this.jobs.get(jobId);
-    
-    if (!oldJob) {
-      throw new Error(`Job ${jobId} not found`);
-    }
-
-    if (oldJob.status !== 'completed' && oldJob.status !== 'failed' && oldJob.status !== 'cancelled') {
-        throw new Error(`Job ${jobId} is not in a terminal state`);
-    }
-
-    // Identify failed items
-    let failedItems = [];
-    
-    if (oldJob.type === 'send-text') {
-        // Collect failed messages (from result.failed or identifying missing success indices)
-        // Check result.failed explicitly
-        if (oldJob.result && oldJob.result.failed) {
-            failedItems = oldJob.result.failed.map(f => ({
-                to: f.to,
-                message: f.message,
-                type: 'text' // Assuming text, but could be preserved
-            }));
-        } 
-        
-        // Also check if some items were never processed (cancellation/failure before completion)
-        const processedIndices = new Set([
-            ...(oldJob.result?.success?.map(s => s.index) || []),
-            ...(oldJob.result?.failed?.map(f => f.index) || [])
-        ]);
-        
-        oldJob.data.messages.forEach((msg, idx) => {
-            if (!processedIndices.has(idx)) {
-                failedItems.push(msg); // Add unprocessed
-            }
-        });
-
-    } else if (oldJob.type === 'send-media') {
-        // Similar logic for media
-        const processedIndices = new Set([
-            ...(oldJob.result?.success?.map(s => s.index) || []),
-            ...(oldJob.result?.failed?.map(f => f.index) || [])
-        ]);
-
-        oldJob.data.items.forEach((item, idx) => {
-             // For explicit failures
-             const failRecord = oldJob.result?.failed?.find(f => f.index === idx);
-             if (failRecord) {
-                 failedItems.push(item);
-             } else if (!processedIndices.has(idx)) {
-                 failedItems.push(item);
-             }
-        });
-    } else {
-        throw new Error(`Retry not supported for job type: ${oldJob.type}`);
-    }
-
-    if (failedItems.length === 0) {
-        throw new Error(`No failed or unprocessed items found to retry for job ${jobId}`);
-    }
-
-    // Create new job with failed items
-    const newData = { ...oldJob.data };
-    if (oldJob.type === 'send-text') {
-        newData.messages = failedItems;
-    } else {
-        newData.items = failedItems;
-    }
-
-    // Create and return new job
-    logger.info(`🔄 Retrying job ${jobId} with ${failedItems.length} items (New Job)`);
-    return this.createJob(oldJob.type, newData, oldJob.options);
-  }
-
-  /**
-   * Process a job
-   * @param {string} jobId - Job ID
-   */
-  async processJob(jobId) {
-    const job = this.jobs.get(jobId);
-    
-    if (!job) {
-      throw new Error(`Job ${jobId} not found`);
-    }
-
-    if (job.status !== 'queued') {
-      logger.warn(`Job ${jobId} is not in queued status (current: ${job.status})`);
-      return;
-    }
-
-    job.status = 'processing';
-    if (!job.startedAt) {
-        job.startedAt = new Date();
-    }
-
-    // Broadcast job start
-    this.broadcastJobProgress(job, true);
-
-    // Store worker info for cancellation/pausing
-    const worker = {
-      cancelled: false,
-      paused: false,
-    };
-    this.workers.set(jobId, worker);
-
-    try {
-      // Process based on job type
-      switch (job.type) {
-        case 'send-text':
-          await this.processSendTextJob(job, worker);
-          break;
-        case 'send-media':
-          await this.processSendMediaJob(job, worker);
-          break;
-        default:
-          throw new Error(`Unknown job type: ${job.type}`);
-      }
-
-      if (!worker.cancelled && !worker.paused && job.status !== 'paused') {
-        job.status = 'completed';
-        job.completedAt = new Date();
-        logger.info(`✅ Job ${jobId} completed successfully`);
-        this.broadcastJobProgress(job, true); // Final status broadcast
-      } else if (job.status === 'paused') {
-          logger.info(`II Job ${jobId} paused`);
-          this.broadcastJobProgress(job, true); // Paused status broadcast
-      }
-    } catch (error) {
-      if (!worker.cancelled) {
-        job.status = 'failed';
-        job.error = error.message;
-        job.completedAt = new Date();
-        logger.error(`❌ Job ${jobId} failed:`, error);
-        this.broadcastJobProgress(job, true); // Failed status broadcast
-      }
-    } finally {
-      this.workers.delete(jobId);
-    }
-  }
-
-  /**
-   * Process send-text job
-   */
-  async processSendTextJob(job, worker) {
-    const { messages, deviceId, sendMessageFn } = job.data;
-    const delay = job.options.delay * 1000; // Convert to milliseconds
-
-    if (!sendMessageFn || typeof sendMessageFn !== 'function') {
-      throw new Error('sendMessageFn is required');
-    }
-
-    job.progress.total = messages.length;
-    
-    // Initialize results if not already present (resume support)
-    if (!job.result) {
-        job.result = {
-          success: [],
-          failed: [],
-        };
-    }
-
-    for (let i = 0; i < messages.length; i++) {
-      // Check if job was cancelled or paused
-      if (worker.cancelled) {
-        logger.info(`🚫 Job ${job.id} cancelled, stopping at message ${i + 1}`);
-        job.status = 'cancelled';
-        break;
-      }
-      
-      if (worker.paused) { // Check worker.paused flag
-          job.status = 'paused'; // Update job status
-          logger.info(`II Job ${job.id} paused, stopping at message ${i + 1}`);
-          break;
-      }
-
-      // Check if already processed (for resume)
-      const isProcessed = job.result.success.some(s => s.index === i) || job.result.failed.some(f => f.index === i);
-      if (isProcessed) {
-          job.progress.completed++; // Increment completed for already processed items
-          continue;
-      }
-
-      const message = messages[i];
-      
-      try {
-        // Send message
-        await sendMessageFn(deviceId, message.to, message.message, message.type || 'text');
-        
-        job.progress.completed++;
-        job.result.success.push({
-          index: i,
-          to: message.to,
-          message: message.message,
-          timestamp: new Date(),
-        });
-
-        // Broadcast progress update (batched automatically)
-        this.broadcastJobProgress(job);
-
-        logger.info(`✅ Job ${job.id}: Sent message ${i + 1}/${messages.length} to ${message.to}`);
-
-        // Delay before next message (except for last message)
-        if (i < messages.length - 1 && !worker.cancelled && !worker.paused) {
-          await this.delay(delay);
-        }
-      } catch (error) {
-        job.progress.failed++;
-        job.result.failed.push({
-          index: i,
-          to: message.to,
-          message: message.message,
-          error: error.message,
-          timestamp: new Date(),
-        });
-
-        logger.error(`❌ Job ${job.id}: Failed to send message ${i + 1}/${messages.length} to ${message.to}:`, error.message);
-        
-        // Continue with next message even if one fails
-      }
-    }
-  }
-
-  /**
-   * Process send-media job
-   */
-  async processSendMediaJob(job, worker) {
-    const { items, deviceId, sendMediaFn, targetType = 'contact' } = job.data;
-    const delay = job.options.delay * 1000; // Convert to milliseconds
-
-    if (!sendMediaFn || typeof sendMediaFn !== 'function') {
-      throw new Error('sendMediaFn is required');
-    }
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      throw new Error('items array is required and must not be empty');
-    }
-
-    job.progress.total = items.length;
-    
-    // Initialize results if not present (resume support)
-    if (!job.result) {
-        job.result = {
-            success: [],
-            failed: [],
-        };
-    }
-
-    for (let i = 0; i < items.length; i++) {
-      // Check if job was cancelled
-      if (worker.cancelled) {
-        logger.info(`🚫 Job ${job.id} cancelled, stopping at item ${i + 1}`);
-        job.status = 'cancelled';
-        break;
-      }
-
-      if (job.status === 'paused') {
-          worker.paused = true;
-          logger.info(`II Job ${job.id} paused, stopping at item ${i + 1}`);
-          break;
-      }
-
-      // Check if already processed (for resume)
-      const isProcessed = job.result.success.some(s => s.index === i) || job.result.failed.some(f => f.index === i);
-      if (isProcessed) {
-          continue;
-      }
-
-      const item = items[i];
-      
-      try {
-        // Prepare media data
-        let mediaBuffer;
-        let fileName = item.fileName || null;
-        let mimetype = item.mimetype || null;
-
-        if (item.base64) {
-          // Base64 data
-          const base64Data = item.base64.startsWith("data:")
-            ? item.base64.split(",")[1]
-            : item.base64;
-          mediaBuffer = Buffer.from(base64Data, "base64");
-        } else if (item.url) {
-          // URL - download media (using whatsappService if available)
-          if (job.data.downloadMediaFromURLFn) {
-            mediaBuffer = await job.data.downloadMediaFromURLFn(item.url);
-          } else {
-            throw new Error('URL download not supported without downloadMediaFromURLFn');
-          }
-        } else if (item.filePath && require('fs').existsSync(item.filePath)) {
-          // File path
-          mediaBuffer = require('fs').readFileSync(item.filePath);
-          fileName = item.fileName || require('path').basename(item.filePath);
-        } else {
-          throw new Error('Media data not found. Provide base64, url, or filePath');
-        }
-
-        // Determine MIME type if not provided
-        if (!mimetype) {
-          switch (item.mediaType) {
-            case "image":
-              mimetype = "image/jpeg";
-              break;
-            case "video":
-              mimetype = "video/mp4";
-              break;
-            case "document":
-              mimetype = "application/pdf";
-              break;
-            default:
-              mimetype = "application/octet-stream";
-          }
-        }
-
-        // Send media based on target type
-        let sentMessage;
-        if (targetType === 'contact') {
-          // Send to contact
-          const phoneNumber = item.to || item.phoneNumber;
-          if (!phoneNumber) {
-            throw new Error('Field "to" is required for contact media');
-          }
-
-          sentMessage = await sendMediaFn(
-            deviceId,
-            phoneNumber,
-            item.mediaType,
-            mediaBuffer,
-            item.caption || null,
-            fileName,
-            mimetype
-          );
-
-          job.result.success.push({
-            index: i,
-            to: phoneNumber,
-            mediaType: item.mediaType,
-            timestamp: new Date(),
-          });
-        } else if (targetType === 'group') {
-          // Send to group
-          const groupId = item.groupId;
-          if (!groupId) {
-            throw new Error('Field "groupId" is required for group media');
-          }
-
-          // For group media, we need a different function
-          if (job.data.sendGroupMediaFn) {
-            sentMessage = await job.data.sendGroupMediaFn(
-              deviceId,
-              groupId,
-              item.mediaType,
-              mediaBuffer,
-              item.caption || null,
-              fileName,
-              mimetype
-            );
-          } else {
-            throw new Error('sendGroupMediaFn is required for group media jobs');
-          }
-
-          job.result.success.push({
-            index: i,
-            groupId: groupId,
-            mediaType: item.mediaType,
-            timestamp: new Date(),
-          });
-        } else {
-          throw new Error(`Invalid targetType: ${targetType}. Must be 'contact' or 'group'`);
-        }
-        
-        job.progress.completed++;
-        
-        // Broadcast progress update (batched automatically)
-        this.broadcastJobProgress(job);
-        
-        const target = targetType === 'contact' ? (item.to || item.phoneNumber) : item.groupId;
-        logger.info(`✅ Job ${job.id}: Sent media ${i + 1}/${items.length} to ${target}`);
-
-        // Delay before next message (except for last message)
-        if (i < items.length - 1 && !worker.cancelled && job.status !== 'paused') {
-          await this.delay(delay);
-        }
-      } catch (error) {
-        job.progress.failed++;
-        
-        const target = targetType === 'contact' ? (item.to || item.phoneNumber) : item.groupId;
-        job.result.failed.push({
-          index: i,
-          target: target,
-          mediaType: item.mediaType,
-          error: error.message,
-          timestamp: new Date(),
-        });
-
-        logger.error(`❌ Job ${job.id}: Failed to send media ${i + 1}/${items.length} to ${target}:`, error.message);
-        
-        // Continue with next item even if one fails
-      }
-    }
-  }
-
-  /**
-   * Delay helper
-   */
-  delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  /**
-   * Cleanup old completed/failed jobs (older than specified hours)
-   * @param {number} hours - Hours to keep jobs (default: 24)
-   */
-  cleanupOldJobs(hours = 24) {
-    const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
-    let cleanedCount = 0;
-
-    for (const [jobId, job] of this.jobs.entries()) {
-      if (
-        (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') &&
-        job.completedAt &&
-        job.completedAt < cutoffTime
-      ) {
-        this.jobs.delete(jobId);
-        cleanedCount++;
-      }
-    }
-
-    if (cleanedCount > 0) {
-      logger.info(`🧹 Cleaned up ${cleanedCount} old jobs`);
-    }
-
-    return cleanedCount;
-  }
-
-  /**
-   * Get job statistics
-   */
-  getStatistics() {
-    const jobs = Array.from(this.jobs.values());
-    
-    return {
-      total: jobs.length,
-      queued: jobs.filter(j => j.status === 'queued').length,
-      processing: jobs.filter(j => j.status === 'processing').length,
-      completed: jobs.filter(j => j.status === 'completed').length,
-      failed: jobs.filter(j => j.status === 'failed').length,
-      cancelled: jobs.filter(j => j.status === 'cancelled').length,
-    };
+  async getUserJobs(userId) {
+      return Job.findAll({ where: { userId }, order: [['created_at', 'DESC']] });
   }
 }
 
-// Export singleton instance
 module.exports = new JobQueueService();
-

@@ -48,6 +48,14 @@ const register = async (req, res) => {
 
     logger.info(`New user registered: ${user.email}`);
 
+    // Set HttpOnly cookie for Next.js Middleware
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
+
     res.status(201).json({
       success: true,
       message: "User registered successfully",
@@ -137,6 +145,14 @@ const login = async (req, res) => {
     });
 
     logger.info(`User logged in: ${user.email}`);
+
+    // Set HttpOnly cookie for Next.js Middleware
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
 
     res.json({
       success: true,
@@ -339,6 +355,14 @@ const refreshToken = async (req, res) => {
     });
 
     logger.info(`Token refreshed for user: ${user.email}`);
+
+    // Set HttpOnly cookie for Next.js Middleware
+    res.cookie("token", newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
 
     res.json({
       success: true,

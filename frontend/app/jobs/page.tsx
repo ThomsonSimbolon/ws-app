@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { Inbox } from 'lucide-react';
 import UserLayout from '@/components/layout/UserLayout';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
@@ -53,7 +54,7 @@ export default function UserJobsPage() {
       if (statusFilter) params.append('status', statusFilter);
       params.append('limit', '50');
 
-      const response = await get<JobsResponse['data']>(`/whatsapp/jobs?${params.toString()}`);
+      const response = await get<JobsResponse['data']>(`/whatsapp-multi-device/jobs?${params.toString()}`);
       if (response.success && response.data) {
         setJobs(response.data.jobs);
         setTotal(response.data.total);
@@ -88,7 +89,7 @@ export default function UserJobsPage() {
     try {
       setCancellingJobId(jobId);
       setError(null);
-      await post(`/whatsapp/jobs/${jobId}/cancel`, {});
+      await post(`/whatsapp-multi-device/jobs/${jobId}/cancel`, {});
       await fetchJobs();
     } catch (err) {
       const apiError = err as ApiError;
@@ -191,7 +192,11 @@ export default function UserJobsPage() {
             </div>
           ) : jobs.length === 0 ? (
             <div className="p-8 text-center">
-              <div className="text-4xl mb-2">📭</div>
+              <div className="flex justify-center mb-4">
+                <div className="bg-primary/10 p-4 rounded-full">
+                  <Inbox className="w-12 h-12 text-primary" />
+                </div>
+              </div>
               <p className="text-text-muted">No jobs found</p>
               <Button 
                 variant="primary" 

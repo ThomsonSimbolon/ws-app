@@ -148,6 +148,31 @@ const startServer = async () => {
       }
     }
 
+    // RECOVERY: Reset 'processing' jobs to 'queued' on boot
+    try {
+      const { Job } = require("./models");
+      const { Op } = require("sequelize");
+      
+      logger.info("🏥 Running Job Recovery Check...");
+      const [updatedCount] = await Job.update(
+        { status: "queued" },
+        { where: { status: "processing" } }
+      );
+      
+      if (updatedCount > 0) {
+        logger.info(`🔄 Recovered ${updatedCount} stuck jobs from 'processing' to 'queued'.`);
+        // Trigger queue processor after a short delay
+        setTimeout(() => {
+          const jobQueueService = require("./services/jobQueueService");
+          jobQueueService.processQueue();
+        }, 5000);
+      } else {
+        logger.info("✅ No stuck jobs found.");
+      }
+    } catch (recoveryError) {
+       logger.error("❌ Job Recovery Failed:", recoveryError);
+    }
+
     // Start the main application
     logger.info("🚀 Starting WhatsApp Service...");
     require("./app");

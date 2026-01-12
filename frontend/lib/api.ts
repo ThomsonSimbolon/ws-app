@@ -115,6 +115,7 @@ async function request<T>(
 
   const config: RequestInit = {
     ...options,
+    credentials: 'include', // CRITICAL: Allow persistence of HttpOnly cookies (SameSite=Lax)
     headers: buildHeaders(options.headers as Record<string, string>),
   };
 

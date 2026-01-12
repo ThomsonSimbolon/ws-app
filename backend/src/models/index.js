@@ -13,6 +13,8 @@ const MessageTemplate = require("./MessageTemplate");
 const AutoReplyRule = require("./AutoReplyRule");
 const DeviceBotConfig = require("./DeviceBotConfig");
 const BotActionLog = require("./BotActionLog");
+const Job = require("./Job");
+const JobItem = require("./JobItem");
 const { sequelize } = require("../config/database");
 
 
@@ -140,4 +142,55 @@ module.exports = {
   AutoReplyRule,
   DeviceBotConfig,
   BotActionLog,
+};
+
+// Job Associations
+User.hasMany(Job, {
+  foreignKey: "user_id",
+  as: "jobs",
+});
+
+Job.belongsTo(User, {
+  foreignKey: "user_id",
+  as: "user",
+});
+
+WhatsAppSession.hasMany(Job, {
+  foreignKey: "device_id",
+  sourceKey: "deviceId",
+  as: "jobs",
+});
+
+Job.belongsTo(WhatsAppSession, {
+  foreignKey: "device_id",
+  targetKey: "deviceId",
+  as: "device",
+});
+
+Job.hasMany(JobItem, {
+  foreignKey: "job_id",
+  as: "items",
+});
+
+JobItem.belongsTo(Job, {
+  foreignKey: "job_id",
+  as: "job",
+});
+
+module.exports = {
+  sequelize,
+  User,
+  WhatsAppSession,
+  Message,
+  Contact,
+  Group,
+  Statistic,
+  ScheduledMessage,
+  AdminActionLog,
+  MessageTemplate,
+  AutoReplyRule,
+  DeviceBotConfig,
+  BotActionLog,
+  Job,
+  JobItem,
 };

@@ -34,35 +34,76 @@ Backend service untuk WhatsApp Business dengan dukungan multi-device menggunakan
 
 ## ✨ Update Terbaru
 
-### Versi 1.3.0 (Januari 2026 - Current)
+### Versi 1.3.2 (Januari 2026 - Production Hardening) 🔒
 
 #### Fitur Baru & Improvement
 
-1.  **Bot & Auto Reply System 🤖**
+1.  **Backend Job Queue Hardening (P0) 🛡️**
+    -   **Persistence**: Migrasi penyimpanan Job dari in-memory ke MySQL (Table `jobs` & `job_items`).
+    -   **Idempotency**: Pencegahan double-send dengan strict status checking per-item (`pending` check).
+    -   **Crash Recovery**: Otomatis reset job `processing` ke `queued` saat server restart.
+    -   **At-Least-Once Delivery**: Jaminan pengiriman pesan dengan risiko minimal.
+
+2.  **Frontend Security Hardening (P0) 🔐**
+    -   **Hybrid Token Strategy**: Support dual-token (Cookie HttpOnly + JSON) untuk keamanan maksimal.
+    -   **Next.js Middleware**: Proteksi route `/admin` dan `/dashboard` di level server/edge.
+    -   **Strict Route Guard**: Redirect otomatis untuk unauthorized access sebelum render HTML.
+
+3.  **Reliability & Resilience (P1) 🌐**
+    -   **Smart SSE Reconnect**: Auto-reconnect dengan exponential backoff untuk mengatasi network drop.
+    -   **Zombie Connection Cleanup**: Mekanisme pembersihan koneksi SSE yang menggantung.
+
+#### Bug Fixes & Optimizations
+-   Fixed critical data loss risk on server restart (Job Queue).
+-   Fixed infinite loop/zombie connection issues on frontend SSE.
+-   Optimized database schema for job tracking.
+
+---
+
+### Versi 1.3.1 (Januari 2026)
+
+#### Fitur Baru & Improvement
+
+1.  **Safety Guard System 🛡️**
+
+    -   **Loop Prevention**: Mencegah bot merespons pesan sendiri (infinite loop protection).
+    -   **Rate Limiting**: Default 5 auto-replies per sender per minute.
+    -   **Message Deduplication**: Pencegahan duplicate message processing (5 menit TTL).
+    -   **Bot Ignore List**: Otomatis mengabaikan status broadcasts, groups, dan known bots.
+    -   **Fail-Silent Operation**: Error handling aman dengan default tidak memproses.
+
+2.  **Bot & Auto Reply System 🤖**
 
     -   **Bot Configuration**: Konfigurasi bot per device (timezone, business hours, welcome message).
     -   **Auto Reply Rules**: Sistem rule fleksibel (Trigger keywords, Regex support, Priority).
     -   **Business Hours**: Jadwal operasional interaktif dengan pesan di luar jam kerja.
     -   **Handoff System**: Mekanisme handoff dari bot ke manusia (agent) dengan keyword tertentu.
+    -   **Conversation State Tracking**: Tracking sesi percakapan aktif per kontak.
 
-2.  **Data Export Center 📊**
+3.  **Enhanced Job Queue 📦**
+
+    -   **Pause/Resume Jobs**: Menghentikan sementara dan melanjutkan bulk messaging.
+    -   **Retry Failed Jobs**: Kemampuan untuk retry job yang gagal atau partial.
+    -   **Batched SSE Updates**: Progress broadcasting dengan interval 1.5 detik untuk efisiensi.
+    -   **Auto Job Cleanup**: Pembersihan otomatis job lama (default 24 jam).
+
+4.  **Data Export Center 📊**
 
     -   **Export Capabilities**: Export data Users, Devices, Messages, dan Audit Logs.
     -   **Format Support**: Dukungan format JSON dan CSV.
     -   **Flexible Filters**: Filter data berdasarkan tanggal, status, dan kategori.
 
-3.  **UI/UX Refinements**
+5.  **UI/UX Refinements**
 
     -   **Business Hours Editor**: Editor visual untuk jadwal operasional bot.
-    -   **Admin Message Layout**: Perbaikan layout pesan untuk readability yang lebih baik.
-    -   **Audit Log Filters**: Perbaikan sistem filtering pada audit logs.
+    -   **Rate Limit Warning**: Komponen peringatan rate limit di Job monitoring.
+    -   **Bot Stats Card**: Dashboard statistik bot per device.
 
 #### Bug Fixes & Optimizations
 
--   Fixed linter errors in ScheduledMessageHistory.
--   Resolved "Failed to load filters" in AuditLogViewer.
--   Optimized internal API endpoints (migrated from external sources).
--   Improved Contact Group functionality verification.
+-   Fixed infinite loop potential in bot auto-reply.
+-   Improved SSE broadcasting efficiency with batched updates.
+-   Optimized job queue memory management.
 
 ---
 
@@ -575,7 +616,8 @@ Fitur yang dapat diakses oleh semua pengguna terdaftar:
 2. **My Devices** (`/devices`)
    - **Connect Device**: Scan QR code untuk menghubungkan WhatsApp
    - **Device Status**: Monitor status koneksi (Connected, Disconnected)
-   - **Bot Configuration**: Atur auto-reply, jam kerja, dan handoff per device
+   - **Bot Configuration**: Atur auto-reply, jam kerja, dan handoff per device (`/devices/[deviceId]/bot`)
+   - **Chat Interface**: Akses chat langsung per device (`/devices/[deviceId]/chat`)
    - **Device Settings**: Kelola session dan logout
 
 3. **Send Message** (`/send-message`)
@@ -591,11 +633,13 @@ Fitur yang dapat diakses oleh semua pengguna terdaftar:
    - **Bulk Messaging**: Kirim pesan massal (Broadcast)
    - **Media Support**: Kirim gambar dan file dalam blast
    - **Targeting**: Input nomor manual atau dari kontak tersimpan
+   - **Rate Limit Warning**: Peringatan risiko rate limit berdasarkan jumlah penerima dan delay
 
 6. **My Jobs** (`/jobs`)
    - **Job Monitoring**: Pantau progress pengiriman blast users
    - **Control**: Pause, Resume, atau Cancel job sendiri
-   - **Error Insight**: Lihat detail error untuk pesan yang gagal
+   - **Error Insight**: Lihat detail error untuk pesan yang gagal dengan `JobErrorDetail` modal
+   - **Progress Bar**: Visual progress dengan `JobProgressBar` component
 
 7. **Contacts** (`/contacts`)
    - Manajemen buku kontak pribadi
@@ -610,52 +654,86 @@ Fitur yang dapat diakses oleh semua pengguna terdaftar:
    - Akses riwayat pesan yang tersinkronisasi
    - Filter chat berdasarkan tanggal atau kontak
 
+10. **Profile** (`/profile`) *(Accessible via Header)*
+    - View dan edit profil user
+    - Ubah password
+    - Upload foto profil
+
+11. **Settings** (`/settings`) *(Accessible via Header)*
+    - Pengaturan preferensi user
+    - Notifikasi dan tema
+
 ### Admin Features (Sidebar Menu)
 
 Fitur khusus untuk role Admin:
 
 1. **Dashboard** (`/dashboard`)
-   - Overview status device dan koneksi
+   - System Overview: Total users, devices, messages
+   - Online Devices Status
+   - Recent Activities Feed
    - Statistik pesan harian (Sent/Received)
-   - Ringkasan aktivitas terbaru
 
 2. **Users** (`/admin/users`)
-   - User Management: Create, Edit, Lock, Delete User
-   - Reset Password User
-   - View User Details & Limits
+   - **User Management**: Create, Edit, Lock/Unlock, Delete User
+   - **Reset Password**: Reset password user
+   - **User Details**: View user details dengan `UserInsightPanel`
+   - **User Filters**: Filter berdasarkan role, status, search
 
 3. **Devices** (`/admin/devices`)
-   - Global Device Monitoring: Lihat semua device di sistem
-   - Administrative Controls: Force disconnect/wipe device
+   - **Global Device Monitoring**: Lihat semua device di sistem dengan `DeviceMonitoring`
+   - **Device Health**: Check kesehatan device dengan `DeviceHealthCard`
+   - **Administrative Controls**: Force disconnect/wipe device
+   - **Device Filters**: Filter berdasarkan user, status
 
 4. **Messages** (`/admin/messages`)
-   - Global Message Log: Audit semua pesan masuk/keluar sistem
-   - Status tracking untuk troubleshooting
+   - **Global Message Log**: Audit semua pesan masuk/keluar sistem
+   - **Message Detail**: Lihat detail pesan dengan `MessageDetailModal`
+   - **Message Filters**: Filter berdasarkan device, direction, status, tanggal
+   - **Status Tracking**: Track status pesan untuk troubleshooting
 
 5. **Groups** (`/admin/groups`)
-   - Group Management: List dan manage grup WhatsApp
-   - Broadcast ke Grup
+   - **Group Management**: List dan manage grup WhatsApp dengan `GroupTable`
+   - **Group Filters**: Filter berdasarkan device
+   - **Broadcast ke Grup**
 
 6. **Contacts** (`/admin/contacts`)
-   - Global Contact Management: Lihat semua kontak di sistem
-   - Filter kontak berdasarkan User/Device
+   - **Global Contact Management**: Lihat semua kontak di sistem dengan `ContactTable`
+   - **Contact Filters**: Filter kontak berdasarkan User/Device
 
 7. **Jobs** (`/admin/jobs`)
-   - Global Job Queue: Monitor antrian sistem
-   - Priority Control: Pause/Resume jobs sistem
-   - Performance Monitoring
+   - **Global Job Queue**: Monitor antrian sistem dengan `JobTable`
+   - **Job Detail**: Lihat detail job dengan `JobDetailModal`
+   - **Priority Control**: Pause/Resume/Retry jobs sistem
+   - **Job Filters**: Filter berdasarkan status, type, tanggal
+   - **Performance Monitoring**
 
 8. **Analytics** (`/analytics`)
-   - System-wide Analytics Dashboard
-   - Export Data (Users, Devices, Logs)
-   - System Health Metrics
+   - **System-wide Analytics Dashboard**
+   - **Data Export**: Export data dengan `DataExport` component
+     - Export Users (JSON/CSV)
+     - Export Devices (JSON/CSV)
+     - Export Messages (JSON/CSV)
+     - Export Audit Logs (JSON/CSV)
+   - **System Health Metrics**
+   - **Audit Log Viewer**: View admin action logs dengan `AuditLogViewer`
+
+9. **Bot Management** (`/admin/bot`) *(Sub-pages)*
+   - **Global Bot Monitoring**: Lihat status bot semua device
+   - **Bot Configuration**: Override konfigurasi bot untuk device tertentu
+   - **Handoff Management**: Monitor dan manage handoff aktif dengan `HandoffManager`
+   - **Bot Rules**: Manage auto-reply rules dengan `RuleList` dan `RuleEditorModal`
+   - **Bot Stats**: View statistik bot dengan `BotStatsCard`
+   - **Bot Logs**: View aktivitas log bot dengan `BotLogsTable`
 
 ### Core Capabilities
 
 - **Multi-Device**: Dukungan untuk banyak device per user
 - **Bot & Auto Reply**: Logic penjawab otomatis dengan Regex dan Keyword
+- **Safety Guard**: Anti-abuse system dengan rate limiting (5 replies/min/sender)
 - **Handoff System**: Transisi mulus dari Bot ke Agent manusia
 - **Data Export**: Kemampuan export data ke JSON/CSV
+- **Real-time Updates**: SSE untuk status device, QR code, job progress
+- **Audit Trail**: Logging admin actions untuk security
 
 ---
 
@@ -739,6 +817,8 @@ ws-app/
 │   │   │   ├── Group.js                # Group model (groupId, name, participants, admins)
 │   │   │   ├── Statistic.js            # Statistics model (deviceId, date, metrics)
 │   │   │   ├── ScheduledMessage.js     # Scheduled message model
+│   │   │   ├── Job.js                  # [NEW] Job persistence model
+│   │   │   ├── JobItem.js              # [NEW] Individual job item (idempotency support)
 │   │   │   └── index.js                # Model associations & exports
 │   │   │
 │   │   ├── routes/
@@ -755,7 +835,9 @@ ws-app/
 │   │   │   ├── statisticsService.js    # Statistics calculation & tracking
 │   │   │   ├── autoReplyService.js     # Logic for auto-reply engine
 │   │   │   ├── handoffService.js       # Logic for bot-to-human handoff
-│   │   │   └── businessHoursService.js # Logic for business hours validation
+│   │   │   ├── businessHoursService.js # Logic for business hours validation
+│   │   │   ├── safetyGuard.js          # **Anti-abuse & loop prevention for bot**
+│   │   │   └── conversationStateService.js # **Conversation state tracking**
 │   │   │
 │   │   └── utils/
 │   │       ├── jwt.js                  # JWT token generation & verification
@@ -974,6 +1056,30 @@ Logic validasi jam kerja:
 
 - `isOpen(config, timezone)` - Cek apakah saat ini jam operasional buka
 
+#### `safetyGuard.js`
+
+Sistem anti-abuse dan loop prevention untuk WhatsApp Bot:
+
+- `shouldProcess(deviceId, senderJid, messageId, fromMe, options)` - Validasi apakah message harus diproses
+- `recordAutoReply(deviceId, senderJid)` - Record sent auto-reply untuk rate limiting
+- `addKnownBot(jid)` - Tambah JID ke daftar bot yang diabaikan
+- `getRateLimitStatus(deviceId, senderJid)` - Get status rate limit untuk sender
+- `getStats()` - Get statistik safety guard (tracked messages, senders, bots)
+
+**Konfigurasi Default:**
+- Rate limit: 5 auto-replies per sender per menit
+- Message deduplication TTL: 5 menit
+- Ignore patterns: status@broadcast, groups (@g.us)
+
+#### `conversationStateService.js`
+
+Tracking sesi percakapan aktif:
+
+- `getState(deviceId, contactJid)` - Get state percakapan untuk kontak
+- `setState(deviceId, contactJid, state)` - Set state percakapan
+- `clearState(deviceId, contactJid)` - Clear state percakapan
+- `isInConversation(deviceId, contactJid)` - Cek apakah sedang dalam percakapan aktif
+
 ### 3. Frontend Modules
 
 #### Redux Slices (`store/slices/`)
@@ -985,8 +1091,43 @@ Logic validasi jam kerja:
 
 #### Key Components (`components/`)
 
-- **BotConfigCard**: Form interface for basic bot settings (toggle, timezone, greeting).
-- **BotRulesTable**: Interactive table to CRUD auto-reply rules (regex/keyword, response).
+**Bot Components (`components/bot/`):**
+- **BotConfigCard**: Form interface for bot settings (toggle, timezone, greeting, business hours).
+- **BotStatsCard**: Dashboard card menampilkan statistik bot (total replies, handoffs, uptime).
+- **BotLogsTable**: Table untuk view aktivitas log bot.
+- **HandoffManager**: Manager untuk bot-to-human handoff aktif.
+- **RuleList**: List auto-reply rules dengan sorting.
+- **RuleEditorModal**: Modal untuk CRUD auto-reply rules (regex/keyword, response).
+- **AutoReplyPreview**: Preview hasil auto-reply untuk testing.
+- **DeviceSelector**: Dropdown selector device untuk bot config.
+
+**Job Components (`components/jobs/`):**
+- **JobErrorDetail**: Modal untuk detail error pada job yang gagal.
+- **JobProgressBar**: Visual progress bar untuk job processing.
+- **JobProgressWidget**: Widget ringkasan progress multiple jobs.
+- **RateLimitWarning**: Komponen peringatan rate limit dengan risk assessment (safe/aggressive/high-risk).
+
+**Admin Components (`components/admin/`):**
+- **UserManagement**: Parent component untuk user CRUD.
+- **UserTable**: Table daftar users dengan actions.
+- **UserForm**: Form untuk create/edit user.
+- **UserInsightPanel**: Panel insight detail user (devices, messages stats).
+- **UserFilters**: Filter component untuk user search.
+- **DeviceMonitoring**: Dashboard monitoring semua devices.
+- **DeviceTable**: Table daftar devices.
+- **DeviceHealthCard**: Card untuk device health check.
+- **MessageTable**: Table daftar messages.
+- **MessageDetailModal**: Modal detail message.
+- **MessageFilters**: Filter component untuk messages.
+- **GroupTable**: Table daftar WhatsApp groups.
+- **ContactTable**: Table daftar contacts.
+- **JobTable**: Table daftar jobs dengan actions.
+- **JobDetailModal**: Modal detail job dengan progress.
+- **JobManager**: Manager component untuk job operations.
+- **AuditLogViewer**: Viewer untuk admin action logs dengan filter.
+- **DataExport**: Component untuk export data (Users, Devices, Messages, Logs).
+
+**UI Components (`components/ui/`):**
 - **QRCodeDisplay**: Component to render QR code string as image and handle refresh.
 - **ChatInterface**: Real-time chat view for history and new messages.
 
@@ -2389,15 +2530,16 @@ async getDevice(req, res) {
 
 **Bot Management (User & Admin):**
 
-- `GET /api/whatsapp-multi-device/devices/:deviceId/bot/config` - Get bot config
-- `PUT /api/whatsapp-multi-device/devices/:deviceId/bot/config` - Update bot config
-- `GET /api/whatsapp-multi-device/devices/:deviceId/bot/rules` - List bot rules
-- `POST /api/whatsapp-multi-device/devices/:deviceId/bot/rules` - Create bot rule
-- `PUT /api/whatsapp-multi-device/devices/:deviceId/bot/rules/:ruleId` - Update bot rule
-- `DELETE /api/whatsapp-multi-device/devices/:deviceId/bot/rules/:ruleId` - Delete bot rule
-- `GET /api/whatsapp-multi-device/devices/:deviceId/bot/handoffs` - List handoffs
-- `POST /api/whatsapp-multi-device/devices/:deviceId/bot/handoffs/:contactJid/resume-bot` - Resume bot
-- `GET /api/whatsapp-multi-device/devices/:deviceId/bot/logs` - Get bot logs
+- `GET /api/bot/devices/:deviceId/config` - Get bot config
+- `PUT /api/bot/devices/:deviceId/config` - Update bot config
+- `GET /api/bot/devices/:deviceId/rules` - List bot rules
+- `POST /api/bot/devices/:deviceId/rules` - Create bot rule
+- `PUT /api/bot/devices/:deviceId/rules/:ruleId` - Update bot rule
+- `DELETE /api/bot/devices/:deviceId/rules/:ruleId` - Delete bot rule
+- `GET /api/bot/devices/:deviceId/handoffs` - List handoffs
+- `POST /api/bot/devices/:deviceId/handoffs/:senderJid/resume` - Resume bot
+- `GET /api/bot/devices/:deviceId/logs` - Get bot logs
+- `GET /api/bot/devices/:deviceId/stats` - Get bot stats
 
 **Data Export (Admin Only):**
 
@@ -3113,5 +3255,5 @@ MIT License
 
 ---
 
-**Last Updated:** December 2024  
-**Version:** 1.0.0
+**Last Updated:** January 2026  
+**Version:** 1.3.1

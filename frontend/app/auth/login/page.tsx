@@ -26,7 +26,10 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/dashboard');
+    if (isAuthenticated) {
+      // Force hard redirect to ensure cookies are sent to middleware
+      window.location.href = '/dashboard';
+    }
     }
   }, [isAuthenticated, router]);
 

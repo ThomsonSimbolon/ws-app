@@ -1324,25 +1324,61 @@ const createSendTextJob = async (req, res) => {
       }
     }
 
-    // Create send message function wrapper
-    const sendMessageFn = async (deviceId, phone, message, type) => {
-      return await whatsappService.sendMessageForDevice(deviceId, phone, message, type || "text");
+    // Create job payload
+    const data = {
+      message: messages[0].message, // Assuming all messages have same content for "bulk"? No, wait. 
+      // The original implementation implies "messages" is an array of potentially DIFFERENT messages.
+      // But my JobQueueService refactor assumes `data.message` is a single template for everyone 
+      // OR `JobItem` needs to store individual message content.
+      // Let's re-read the original `createSendTextJob`.
+      // It takes `messages` array. Each msg has `to` and `message`.
+      // My `JobItem` model has `recipient`. It does NOT have `message` content.
+      // CRITICAL: The current `JobItem` model assumes "Broadcast" (Same message to many).
+      // But `createSendTextJob` allows different messages.
+      // I need to check if `messages` allows unique content per recipient.
+      // Line 1317: `if (!msg.to || !msg.message)` -> Yes, unique content allowed.
+      
+      // I need to update `JobItem` model to store `body` or `data` JSON if we want to support unique messages?
+      // OR, I can store the entire `messages` array in `Job.data` and map them by index/recipient.
+      // Storing in 'Job.data' is easier for now to avoid Model changes if possible.
+      // The refactored `processJob` iterates `items`.
+      // `item.recipient`.
+      // If I store `messages` in `Job.data`, I need to find the message for `item.recipient`.
+      
+      // Let's check `JobQueueService.processJob`:
+      // `const sent = await whatsappService.sendMessage(deviceId, item.recipient, job.data.message);`
+      // This sends the SAME message. This breaks the "Different Message" feature.
+      
+      // FIX PLAN:
+      // 1. Update `JobItem` to include `custom_data` or similar? No, strictly Job/JobItem.
+      // 2. Or, since I can't change Model in `models/JobItem.js` (I already wrote it), 
+      //    I should store `messages` in `Job.data`.
+      //    In `processJob`, I look up the message for `item.recipient`.
+      
+      // But wait, `recipients` arg in `createJob` expected array of strings or objects?
+      // My `createJob` takes `recipients`. `processJob` uses `item.recipient`.
+      
+      // Let's modify `whatsappMultiDeviceController` to pass `messages` as `data.messages`.
+      // And I will update `JobQueueService.processJob` to handle this lookup.
+      messages: messages 
     };
+    
+    // Extract recipients for JobItem creation
+    const recipients = messages.map(m => m.to || m.phone);
 
     // Create job
-    const jobId = jobQueueService.createJob("send-text", {
-      deviceId,
-      messages,
-      sendMessageFn,
-    }, {
-      delay: delay, // Use delay from root level
-      autoStart: true,
-    });
+    const job = await jobQueueService.createJob(
+       userId,
+       deviceId,
+       "send-text",
+       data,
+       recipients
+    );
 
-    logger.info(`📦 Created bulk messaging job ${jobId} for device ${deviceId}`);
+    logger.info(`📦 Created bulk messaging job ${job.id} for device ${deviceId}`);
 
     const { response, statusCode } = successResponse({
-      jobId: jobId,
+      jobId: job.id,
       status: "queued",
       delaySec: delay,
       total: messages.length,
@@ -1436,39 +1472,28 @@ const createSendMediaJob = async (req, res) => {
       }
     }
 
-    // Create send media function wrapper
-    const sendMediaFn = async (deviceId, phoneNumber, mediaType, mediaBuffer, caption, fileName, mimetype) => {
-      return await whatsappService.sendMediaForDevice(
-        deviceId,
-        phoneNumber,
-        mediaType,
-        mediaBuffer,
-        caption,
-        fileName,
-        mimetype
-      );
+    // Create job payload
+    const data = {
+      items: items, // Store original full items in data
+      delay: delay
     };
 
-    const downloadMediaFromURLFn = async (url) => {
-      return await whatsappService.downloadMediaFromURL(url);
-    };
+    // Extract recipients
+    const recipients = items.map(i => i.to || i.phoneNumber);
 
     // Create job
-    const jobId = jobQueueService.createJob("send-media", {
+    const job = await jobQueueService.createJob(
+      userId,
       deviceId,
-      items,
-      sendMediaFn,
-      downloadMediaFromURLFn,
-      targetType: 'contact',
-    }, {
-      delay: delay,
-      autoStart: true,
-    });
+      "send-media",
+      data,
+      recipients
+    );
 
-    logger.info(`📦 Created bulk media job ${jobId} for device ${deviceId}`);
+    logger.info(`📦 Created bulk media job ${job.id} for device ${deviceId}`);
 
     const { response, statusCode } = successResponse({
-      jobId: jobId,
+      jobId: job.id,
       status: "queued",
       delaySec: delay,
       total: items.length,
@@ -1494,7 +1519,7 @@ const getJobStatus = async (req, res) => {
     const { jobId } = req.params;
     const userId = req.user.id;
 
-    const job = jobQueueService.getJob(jobId);
+    const job = await jobQueueService.getJob(jobId);
 
     if (!job) {
       const { response, statusCode } = errorResponse(
@@ -1506,7 +1531,8 @@ const getJobStatus = async (req, res) => {
     }
 
     // Verify job belongs to user's device
-    const device = await deviceManager.getDevice(job.data.deviceId);
+    // job.deviceId is at root now, not in data
+    const device = await deviceManager.getDevice(job.deviceId);
     if (!device || (device.userId !== userId && req.user.role !== "admin")) {
       const { response, statusCode } = errorResponse(
         "Akses ditolak",
@@ -1516,49 +1542,58 @@ const getJobStatus = async (req, res) => {
       return res.status(statusCode).json(response);
     }
 
-    // Format progress sesuai dokumentasi
+    // MAP JOB ITEMS TO RESULTS
+    // The previous implementation stored results in `job.result` object.
+    // Our new implementation uses `job.items` (array of JobItem models).
+    
+    // Group items by status
+    const successItems = job.items.filter(i => i.status === 'sent');
+    const failedItems = job.items.filter(i => i.status === 'failed');
+
+    // Format progress
     const progress = {
       total: job.progress.total || 0,
-      currentIndex: job.progress.completed || 0,
-      successCount: job.result?.success?.length || 0,
-      errorCount: job.progress.failed || job.result?.failed?.length || 0,
+       // Current index is roughly success + failed. 
+       // Start from 0 + count.
+      currentIndex: (successItems.length + failedItems.length) || 0,
+      successCount: successItems.length,
+      errorCount: failedItems.length,
     };
 
-    // Format results sesuai dokumentasi
+    // Format results
     let results = [];
-    if (job.result) {
-      if (job.result.success && Array.isArray(job.result.success)) {
-        results = job.result.success.map((item) => ({
-          to: item.to,
-          status: "success",
-          messageId: item.messageId || null,
-          timestamp: item.timestamp || new Date().toISOString(),
-        }));
-      }
-      if (job.result.failed && Array.isArray(job.result.failed)) {
-        results = results.concat(
-          job.result.failed.map((item) => ({
-            to: item.to,
-            status: "error",
-            error: item.error || "Unknown error",
-          }))
-        );
-      }
-    }
+    
+    // Map success items
+    results = results.concat(successItems.map(item => ({
+      to: item.recipient,
+      status: "success",
+      messageId: item.messageId,
+      timestamp: item.processedAt ? item.processedAt.toISOString() : new Date().toISOString()
+    })));
+
+    // Map failed items
+    results = results.concat(failedItems.map(item => ({
+      to: item.recipient,
+      status: "error",
+      error: item.error || "Unknown error",
+      timestamp: item.processedAt ? item.processedAt.toISOString() : new Date().toISOString()
+    })));
 
     // Format options
     const options = {
-      delaySec: job.options?.delay || 3,
+      delaySec: job.data.delay || 3,
     };
 
     const { response, statusCode } = successResponse({
       id: job.id,
       type: job.type,
-      deviceId: job.data.deviceId,
+      deviceId: job.deviceId,
       status: job.status,
       createdAt: job.createdAt ? new Date(job.createdAt).toISOString().replace('T', ' ').substring(0, 19) : null,
-      startedAt: job.startedAt ? new Date(job.startedAt).toISOString().replace('T', ' ').substring(0, 19) : null,
-      finishedAt: job.completedAt ? new Date(job.completedAt).toISOString().replace('T', ' ').substring(0, 19) : null,
+      // StartedAt/FinishedAt not strictly in model but could be inferred or added. 
+      // For now use UpdatedAt/CreatedAt approximations or null
+      startedAt: job.updatedAt ? new Date(job.updatedAt).toISOString().replace('T', ' ').substring(0, 19) : null,
+      finishedAt: job.status === 'completed' ? new Date(job.updatedAt).toISOString().replace('T', ' ').substring(0, 19) : null,
       progress: progress,
       results: results,
       options: options,
@@ -4413,11 +4448,15 @@ const listUserJobs = async (req, res) => {
       return res.status(statusCode).json(response);
     }
 
-    // Get all jobs and filter by user's devices
-    const allJobs = jobQueueService.getJobs({ status, type });
+    // Get all jobs for this user directly from DB
+    let userJobsList = await jobQueueService.getUserJobs(userId);
+
+    // Filter by status/type if provided (in memory for now, optimization for later)
+    if (status) userJobsList = userJobsList.filter(job => job.status === status);
+    if (type) userJobsList = userJobsList.filter(job => job.type === type);
     
-    const userJobs = allJobs
-      .filter(job => userDeviceIds.includes(job.data?.deviceId))
+    const userJobs = userJobsList
+    
       .slice(0, parseInt(limit) || 50)
       .map(job => ({
         id: job.id,
