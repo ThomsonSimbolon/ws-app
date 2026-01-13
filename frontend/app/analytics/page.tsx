@@ -72,7 +72,9 @@ export default function AnalyticsPage() {
   }));
 
   // If no trend data, generate sample based on last 24h activity
+  let isEstimated = false;
   if (formattedTrendData.length === 0 && globalStats) {
+    isEstimated = true;
     const today = new Date();
     const msgs24h = globalStats.activity.last24Hours.messages;
     const incoming = globalStats.messages.incoming;
@@ -175,17 +177,25 @@ export default function AnalyticsPage() {
 
         {/* Charts Row 1 */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <LineChart
-            title="Message Trend (7 Days)"
-            data={formattedTrendData}
-            xKey="date"
-            lines={[
-              { dataKey: 'Incoming', color: '#3b82f6', name: 'Incoming' },
-              { dataKey: 'Outgoing', color: '#22c55e', name: 'Outgoing' },
-            ]}
-            height={300}
-            loading={loading.trendData}
-          />
+          <div className="flex flex-col gap-2">
+            {isEstimated && (
+              <div className="bg-warning-soft text-warning text-xs px-3 py-2 rounded-md flex items-center gap-2 border border-warning/20">
+                <span>⚠️</span>
+                <span className="font-medium">Estimated trend based on recent activity</span>
+              </div>
+            )}
+            <LineChart
+              title={`Message Trend (7 Days)${isEstimated ? ' (Estimated)' : ''}`}
+              data={formattedTrendData}
+              xKey="date"
+              lines={[
+                { dataKey: 'Incoming', color: '#3b82f6', name: 'Incoming' },
+                { dataKey: 'Outgoing', color: '#22c55e', name: 'Outgoing' },
+              ]}
+              height={300}
+              loading={loading.trendData}
+            />
+          </div>
 
           <PieChart
             title="Device Status Distribution"

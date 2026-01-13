@@ -21,12 +21,24 @@ class SafetyGuard {
     this.senderRateLimits = new Map();
 
     // Configuration
+    // Parse env vars with safety defaults
+    const envRateLimit = parseInt(process.env.BOT_RATE_LIMIT_PER_MINUTE);
+    const envWindowSec = parseInt(process.env.BOT_RATE_LIMIT_WINDOW_SEC);
+
+    // Validate: Min 1 message, Default 5
+    const maxMessages = (!isNaN(envRateLimit) && envRateLimit >= 1) ? envRateLimit : 5;
+    
+    // Validate: Min 10 seconds, Default 60
+    const windowSec = (!isNaN(envWindowSec) && envWindowSec >= 10) ? envWindowSec : 60;
+
     this.config = {
-      rateLimitWindow: 60000, // 1 minute
-      maxMessagesPerWindow: 5, // Max auto-replies per sender per minute
+      rateLimitWindow: windowSec * 1000, 
+      maxMessagesPerWindow: maxMessages, 
       messageDeduplicationTTL: 300000, // 5 minutes
       cleanupInterval: 60000, // Cleanup every minute
     };
+
+    logger.info(`🛡️ SafetyGuard Configured: ${maxMessages} msgs / ${windowSec} sec`);
 
     // Ignore list patterns
     this.ignorePatterns = [

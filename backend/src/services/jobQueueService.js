@@ -148,8 +148,26 @@ class JobQueueService {
 
       try {
         // 2. SAFETY DELAY (Rate Limit Protection)
-        // 2 seconds delay = ~30 msgs/min (Safe)
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Order: Job-specific delay > Env Var > Default (2000ms)
+        const defaultDelay = 2000;
+        const minDelay = 500; // Hard safety floor to prevent rate-limit bans
+        
+        let delay = process.env.JOB_MESSAGE_DELAY ? parseInt(process.env.JOB_MESSAGE_DELAY) : defaultDelay;
+        
+        // Allow job-specific override if present in data
+        if (job.data && job.data.delay) {
+             const jobDelay = parseInt(job.data.delay);
+             if (!isNaN(jobDelay)) {
+                 delay = jobDelay;
+             }
+        }
+        
+        // Enforce safety floor & Valid Integer
+        if (isNaN(delay) || delay < minDelay) {
+             delay = minDelay;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, delay));
 
         let sentMessageId = null;
 

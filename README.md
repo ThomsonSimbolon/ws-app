@@ -34,6 +34,23 @@ Backend service untuk WhatsApp Business dengan dukungan multi-device menggunakan
 
 ## ✨ Update Terbaru
 
+### Versi 1.3.4 (Januari 2026 - Post-Audit Enhancements) 🚀
+
+#### Fitur Baru & Optimasi
+1.  **Configurable Job Queue ⚙️**
+    -   **Variable Delay**: Support konfigurasi delay antar pesan via global env `JOB_MESSAGE_DELAY`.
+    -   **Priority Logic**: Job-specific delay > Global Env > Default (2000ms).
+    -   **Safety Floor**: Proteksi minimum 500ms untuk mencegah ban.
+
+2.  **Configurable Bot Safety 🛡️**
+    -   **Flexible Rate Limiting**: Limit pesan bot kini dapat dikonfigurasi via config (Default: 5 msg/60s).
+    -   **Loop Protection**: Tetap mempertahankan strict check terhadap `fromMe`.
+
+3.  **UX Enhancements ✨**
+    -   **Analytics Transparency**: Indikator visual "Estimated Trend" pada dashboard analitik jika data historis kosong.
+
+---
+
 ### Versi 1.3.3 (Januari 2026 - Critical Fixes & Stability) 🚑
 
 #### Critical Fixes
@@ -1513,6 +1530,9 @@ Server akan berjalan di `http://localhost:5005`
 | `FRONTEND_URL`           | Frontend URL untuk CORS           | `http://localhost:5173` | ❌       |
 | `NODE_ENV`               | Environment mode                  | `development`           | ❌       |
 | `AUTO_CREATE_TABLES`     | Auto create tables on startup     | `true`                  | ❌       |
+| `JOB_MESSAGE_DELAY`      | Delay antar pesan Job Queue (ms)  | `2000`                  | ❌       |
+| `BOT_RATE_LIMIT_PER_MINUTE` | Max bot replies per user/min   | `5`                     | ❌       |
+| `BOT_RATE_LIMIT_WINDOW_SEC` | Window waktu rate limit (sec)  | `60`                    | ❌       |
 
 ### Konfigurasi CORS
 
