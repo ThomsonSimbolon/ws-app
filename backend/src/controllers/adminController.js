@@ -979,6 +979,19 @@ const listJobs = async (req, res) => {
 
     let jobs = await jobQueueService.getAllJobs(filter);
 
+    // Convert Sequelize instances to plain objects
+    jobs = jobs.map(job => {
+      // Use toJSON() if it's a Sequelize instance, otherwise use plain object
+      if (job && typeof job.toJSON === 'function') {
+        return job.toJSON();
+      }
+      // If it's already a plain object with dataValues, extract it
+      if (job && job.dataValues) {
+        return { ...job.dataValues };
+      }
+      return job;
+    });
+
     // Limit results
     if (limit) {
       jobs = jobs.slice(0, parseInt(limit));
@@ -987,7 +1000,26 @@ const listJobs = async (req, res) => {
     // Enrich jobs with device info if available
     const enrichedJobs = await Promise.all(
       jobs.map(async (job) => {
+        // Start with clean copy
         const jobData = { ...job };
+        
+        // Parse JSON string fields if they exist
+        // Data field might be JSON string from DB
+        if (jobData.data && typeof jobData.data === 'string') {
+          try {
+            jobData.data = JSON.parse(jobData.data);
+          } catch (e) {
+            // Keep as is if parsing fails
+          }
+        } else if (!jobData.data && jobData.dataValues && jobData.dataValues.data) {
+          if (typeof jobData.dataValues.data === 'string') {
+            try {
+              jobData.data = JSON.parse(jobData.dataValues.data);
+            } catch (e) {
+              jobData.data = {};
+            }
+          }
+        }
         
         // Convert Date objects to ISO strings for JSON serialization
         if (jobData.createdAt instanceof Date) {
@@ -998,6 +1030,56 @@ const listJobs = async (req, res) => {
         }
         if (jobData.completedAt instanceof Date) {
           jobData.completedAt = jobData.completedAt.toISOString();
+        }
+
+        // Normalize progress field for frontend compatibility
+        // Backend uses 'sent', frontend expects 'completed'
+        // IMPORTANT: Progress might be a JSON string from DB, need to parse first
+        let progressData = jobData.progress;
+        
+        // Parse if it's a string (from dataValues)
+        if (typeof progressData === 'string') {
+          try {
+            progressData = JSON.parse(progressData);
+          } catch (e) {
+            progressData = null;
+          }
+        }
+        
+        // If still no valid progress, check dataValues
+        if (!progressData && jobData.dataValues && jobData.dataValues.progress) {
+          if (typeof jobData.dataValues.progress === 'string') {
+            try {
+              progressData = JSON.parse(jobData.dataValues.progress);
+            } catch (e) {
+              progressData = null;
+            }
+          } else {
+            progressData = jobData.dataValues.progress;
+          }
+        }
+        
+        // Normalize field names and add missing fields
+        if (progressData) {
+          // Calculate total if missing (from messages array in data)
+          let total = progressData.total || 0;
+          if (!total && jobData.data && jobData.data.messages && Array.isArray(jobData.data.messages)) {
+            total = jobData.data.messages.length;
+          }
+          
+          jobData.progress = {
+            total: total,
+            completed: progressData.sent || progressData.completed || 0,
+            failed: progressData.failed || 0
+          };
+        } else {
+          // Fallback for jobs without progress field
+          // Try to calculate total from messages
+          let total = 0;
+          if (jobData.data && jobData.data.messages && Array.isArray(jobData.data.messages)) {
+            total = jobData.data.messages.length;
+          }
+          jobData.progress = { total: total, completed: 0, failed: 0 };
         }
 
         // Get device info if deviceId exists in job data

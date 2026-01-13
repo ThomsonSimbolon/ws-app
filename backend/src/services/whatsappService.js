@@ -1919,10 +1919,31 @@ class WhatsAppService {
           throw new Error("Unsupported message type");
       }
 
+      // Get userId from WhatsAppSession using deviceId (userId param is actually deviceId from job processor)
+      // First try to find session by deviceId
+      let actualUserId = userId; // Fallback to parameter value
+      const sessionByDevice = await WhatsAppSession.findOne({
+        where: { deviceId: userId, isActive: true },
+        attributes: ['id', 'userId']
+      });
+      
+      if (sessionByDevice) {
+        actualUserId = sessionByDevice.userId;
+      } else {
+        // Fallback: try legacy userId-based lookup
+        const sessionById = await WhatsAppSession.findOne({
+          where: { userId: userId, isActive: true },
+          attributes: ['id', 'userId']
+        });
+        if (sessionById) {
+          actualUserId = sessionById.userId;
+        }
+      }
+
       // Save to database
       await Message.create({
-        userId,
-        sessionId: await this.getSessionIdFromDB(userId),
+        userId: actualUserId,  // Use actual user ID from session
+        sessionId: sessionByDevice?.id || await this.getSessionIdFromDB(userId),
         messageId: sentMessage.key.id,
         fromNumber: sessionState.phoneNumber,
         toNumber: phoneNumber,

@@ -67,6 +67,7 @@ export default function JobTable({
   };
 
   const truncateJobId = (jobId: string) => {
+    if (!jobId) return 'N/A'; // Handle undefined/null jobId
     if (jobId.length > 20) {
       return jobId.substring(0, 20) + '...';
     }
@@ -106,38 +107,45 @@ export default function JobTable({
           </tr>
         </thead>
         <tbody>
-          {jobs.map((job) => {
-            const progressPercentage = job.progress.total > 0
-              ? (job.progress.completed / job.progress.total) * 100
+          {jobs.filter(job => job && job.id).map((job) => {
+            // Safe progress extraction with fallback for undefined
+            const progress = job.progress || { total: 0, completed: 0, failed: 0 };
+            const progressPercentage = progress.total > 0
+              ? (progress.completed / progress.total) * 100
               : 0;
+            
+            // Safe job properties with fallback
+            const jobId = job.id || 'unknown';
+            const jobStatus = job.status || 'unknown';
+            const jobType = job.type || 'unknown';
 
             return (
               <tr
-                key={job.id}
+                key={jobId}
                 className="border-b border-divider hover:bg-elevated transition-colors"
               >
                 <td className="py-3 px-4">
                   <span className="text-text-primary text-sm font-mono">
-                    {truncateJobId(job.id)}
+                    {truncateJobId(String(jobId))}
                   </span>
                 </td>
                 <td className="py-3 px-4">
                   <Badge variant="info">
-                    {getTypeLabel(job.type)}
+                    {getTypeLabel(jobType)}
                   </Badge>
                 </td>
                 <td className="py-3 px-4">
-                  <Badge variant={getStatusBadgeVariant(job.status)}>
-                    {job.status}
+                  <Badge variant={getStatusBadgeVariant(jobStatus)}>
+                    {jobStatus}
                   </Badge>
                 </td>
                 <td className="py-3 px-4">
                   {job.device ? (
                     <div>
-                      <p className="text-text-primary text-sm">{job.device.deviceName}</p>
+                      <p className="text-text-primary text-sm">{job.device.deviceName || 'Unknown'}</p>
                       {job.device.user && (
                         <p className="text-xs text-text-muted">
-                          {job.device.user.fullName || job.device.user.username}
+                          {job.device.user.fullName || job.device.user.username || 'Unknown User'}
                         </p>
                       )}
                     </div>
@@ -149,7 +157,7 @@ export default function JobTable({
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-xs text-text-secondary">
                       <span>
-                        {job.progress.completed} / {job.progress.total}
+                        {progress.completed} / {progress.total}
                       </span>
                       <span>{progressPercentage.toFixed(0)}%</span>
                     </div>
@@ -159,9 +167,9 @@ export default function JobTable({
                         style={{ width: `${progressPercentage}%` }}
                       />
                     </div>
-                    {job.progress.failed > 0 && (
+                    {progress.failed > 0 && (
                       <p className="text-xs text-danger">
-                        {job.progress.failed} failed
+                        {progress.failed} failed
                       </p>
                     )}
                   </div>
@@ -182,7 +190,7 @@ export default function JobTable({
                     )}
                     
                     {/* Control Buttons */}
-                    {(job.status === 'queued' || job.status === 'processing') && (
+                    {(jobStatus === 'queued' || jobStatus === 'processing') && (
                       <>
                         {onPause && (
                           <Button 
@@ -206,7 +214,7 @@ export default function JobTable({
                       </>
                     )}
 
-                    {job.status === 'paused' && (
+                    {jobStatus === 'paused' && (
                       <>
                         {onResume && (
                           <Button 
@@ -230,7 +238,7 @@ export default function JobTable({
                       </>
                     )}
 
-                    {(job.status === 'failed' || job.status === 'cancelled' || job.status === 'completed') && job.progress.failed > 0 && (
+                    {(jobStatus === 'failed' || jobStatus === 'cancelled' || jobStatus === 'completed') && progress.failed > 0 && (
                       <>
                         {onRetry && (
                           <Button

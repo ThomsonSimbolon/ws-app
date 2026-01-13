@@ -100,7 +100,7 @@ export default function ChatBlastPage() {
 
       // Create job
       const response = await post<{ jobId: string; status: string; total: number }>(
-        `/whatsapp/devices/${encodeURIComponent(selectedDevice)}/jobs/send-text`,
+        `/whatsapp-multi-device/devices/${encodeURIComponent(selectedDevice)}/jobs/send-text`,
         {
           messages,
           delay,
@@ -186,7 +186,7 @@ export default function ChatBlastPage() {
               <textarea
                 value={recipients}
                 onChange={(e) => setRecipients(e.target.value)}
-                placeholder="Enter phone numbers separated by commas, semicolons, or new lines&#10;&#10;Example:&#10;+6281234567890&#10;081234567891&#10;+6281234567892"
+                placeholder="Enter phone numbers separated by commas, semicolons, or new lines&#10;&#10;Example: +6281234567890 081234567891 +6281234567892"
                 rows={6}
                 className="w-full px-4 py-3 bg-elevated border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none font-mono text-sm"
               />

@@ -1326,45 +1326,25 @@ const createSendTextJob = async (req, res) => {
 
     // Create job payload
     const data = {
-      message: messages[0].message, // Assuming all messages have same content for "bulk"? No, wait. 
-      // The original implementation implies "messages" is an array of potentially DIFFERENT messages.
-      // But my JobQueueService refactor assumes `data.message` is a single template for everyone 
-      // OR `JobItem` needs to store individual message content.
-      // Let's re-read the original `createSendTextJob`.
-      // It takes `messages` array. Each msg has `to` and `message`.
-      // My `JobItem` model has `recipient`. It does NOT have `message` content.
-      // CRITICAL: The current `JobItem` model assumes "Broadcast" (Same message to many).
-      // But `createSendTextJob` allows different messages.
-      // I need to check if `messages` allows unique content per recipient.
-      // Line 1317: `if (!msg.to || !msg.message)` -> Yes, unique content allowed.
-      
-      // I need to update `JobItem` model to store `body` or `data` JSON if we want to support unique messages?
-      // OR, I can store the entire `messages` array in `Job.data` and map them by index/recipient.
-      // Storing in 'Job.data' is easier for now to avoid Model changes if possible.
-      // The refactored `processJob` iterates `items`.
-      // `item.recipient`.
-      // If I store `messages` in `Job.data`, I need to find the message for `item.recipient`.
-      
-      // Let's check `JobQueueService.processJob`:
-      // `const sent = await whatsappService.sendMessage(deviceId, item.recipient, job.data.message);`
-      // This sends the SAME message. This breaks the "Different Message" feature.
-      
-      // FIX PLAN:
-      // 1. Update `JobItem` to include `custom_data` or similar? No, strictly Job/JobItem.
-      // 2. Or, since I can't change Model in `models/JobItem.js` (I already wrote it), 
-      //    I should store `messages` in `Job.data`.
-      //    In `processJob`, I look up the message for `item.recipient`.
-      
-      // But wait, `recipients` arg in `createJob` expected array of strings or objects?
-      // My `createJob` takes `recipients`. `processJob` uses `item.recipient`.
-      
-      // Let's modify `whatsappMultiDeviceController` to pass `messages` as `data.messages`.
-      // And I will update `JobQueueService.processJob` to handle this lookup.
+      delay: delay, // Store delay for job processor
       messages: messages 
     };
     
-    // Extract recipients for JobItem creation
-    const recipients = messages.map(m => m.to || m.phone);
+    // Extract recipients for JobItem creation and normalize them
+    const recipients = messages.map(m => {
+      const phone = m.to || m.phone;
+      return normalizePhoneNumber(phone);
+    }).filter(p => p !== null); // Remove invalid phone numbers
+
+    // Validate that we have at least one valid recipient
+    if (recipients.length === 0) {
+      const { response, statusCode } = errorResponse(
+        "Tidak ada nomor telepon yang valid setelah normalisasi",
+        "Pastikan format nomor: +62xxx, 62xxx, atau 08xxx",
+        400
+      );
+      return res.status(statusCode).json(response);
+    }
 
     // Create job
     const job = await jobQueueService.createJob(
@@ -1546,13 +1526,23 @@ const getJobStatus = async (req, res) => {
     // The previous implementation stored results in `job.result` object.
     // Our new implementation uses `job.items` (array of JobItem models).
     
+    // Parse progress if it's a JSON string
+    let progressData = job.progress;
+    if (typeof progressData === 'string') {
+      try {
+        progressData = JSON.parse(progressData);
+      } catch (e) {
+        progressData = { total: 0, sent: 0, failed: 0 };
+      }
+    }
+
     // Group items by status
     const successItems = job.items.filter(i => i.status === 'sent');
     const failedItems = job.items.filter(i => i.status === 'failed');
 
     // Format progress
     const progress = {
-      total: job.progress.total || 0,
+      total: progressData.total || 0,
        // Current index is roughly success + failed. 
        // Start from 0 + count.
       currentIndex: (successItems.length + failedItems.length) || 0,
@@ -1631,7 +1621,7 @@ const cancelJob = async (req, res) => {
     }
 
     // Verify job belongs to user's device
-    const device = await deviceManager.getDevice(job.data.deviceId);
+    const device = await deviceManager.getDevice(job.deviceId);
     if (!device || (device.userId !== userId && req.user.role !== "admin")) {
       const { response, statusCode } = errorResponse(
         "Akses ditolak",
@@ -4451,28 +4441,75 @@ const listUserJobs = async (req, res) => {
     // Get all jobs for this user directly from DB
     let userJobsList = await jobQueueService.getUserJobs(userId);
 
+    // Convert Sequelize instances to plain objects
+    userJobsList = userJobsList.map(job => {
+      // Use toJSON() if it's a Sequelize instance
+      if (job && typeof job.toJSON === 'function') {
+        return job.toJSON();
+      }
+      // If it's already a plain object with dataValues, extract it
+      if (job && job.dataValues) {
+        return { ...job.dataValues };
+      }
+      return job;
+    });
+
     // Filter by status/type if provided (in memory for now, optimization for later)
     if (status) userJobsList = userJobsList.filter(job => job.status === status);
     if (type) userJobsList = userJobsList.filter(job => job.type === type);
     
     const userJobs = userJobsList
-    
       .slice(0, parseInt(limit) || 50)
-      .map(job => ({
-        id: job.id,
-        type: job.type,
-        deviceId: job.data?.deviceId,
-        status: job.status,
-        progress: {
-          total: job.progress?.total || 0,
-          completed: job.progress?.completed || 0,
-          failed: job.progress?.failed || 0
-        },
-        createdAt: job.createdAt ? new Date(job.createdAt).toISOString() : null,
-        startedAt: job.startedAt ? new Date(job.startedAt).toISOString() : null,
-        completedAt: job.completedAt ? new Date(job.completedAt).toISOString() : null,
-        error: job.error || null
-      }));
+      .map(job => {
+        // Parse JSON string fields
+        let jobData = job.data;
+        if (typeof jobData === 'string') {
+          try {
+            jobData = JSON.parse(jobData);
+          } catch (e) {
+            jobData = {};
+          }
+        }
+
+        let progressData = job.progress;
+        if (typeof progressData === 'string') {
+          try {
+            progressData = JSON.parse(progressData);
+          } catch (e) {
+            progressData = null;
+          }
+        }
+
+        // Normalize progress field and calculate total if missing
+        let normalizedProgress = { total: 0, completed: 0, failed: 0 };
+        if (progressData) {
+          let total = progressData.total || 0;
+          // Calculate total from messages if missing
+          if (!total && jobData && jobData.messages && Array.isArray(jobData.messages)) {
+            total = jobData.messages.length;
+          }
+          normalizedProgress = {
+            total: total,
+            completed: progressData.sent || progressData.completed || 0,
+            failed: progressData.failed || 0
+          };
+        } else if (jobData && jobData.messages && Array.isArray(jobData.messages)) {
+          // No progress data, but we can calculate total from messages
+          normalizedProgress.total = jobData.messages.length;
+        }
+
+        return {
+          id: job.id,
+          type: job.type,
+          deviceId: job.deviceId, // Now from root level
+          status: job.status,
+          progress: normalizedProgress,
+          createdAt: job.createdAt ? new Date(job.createdAt).toISOString() : null,
+          startedAt: job.startedAt ? new Date(job.startedAt).toISOString() : null,
+          completedAt: job.completedAt ? new Date(job.completedAt).toISOString() : null,
+          error: job.error || null
+        };
+      });
 
     const { response, statusCode } = successResponse({
       jobs: userJobs,

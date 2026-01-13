@@ -58,7 +58,7 @@ export default function JobErrorDetail({ jobId, isOpen, onClose }: JobErrorDetai
       try {
         setIsLoading(true);
         setError(null);
-        const response = await get<JobDetail>(`/whatsapp/jobs/${encodeURIComponent(jobId)}`);
+        const response = await get<JobDetail>(`/whatsapp-multi-device/jobs/${encodeURIComponent(jobId)}`);
         if (response.success && response.data) {
           setJobDetail(response.data);
         }

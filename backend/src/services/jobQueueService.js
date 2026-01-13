@@ -110,9 +110,32 @@ class JobQueueService {
    * STRICT IDEMPOTENCY: Only processes 'pending' items.
    */
   async processJob(job) {
-    const { deviceId, type, data } = job;
-    let successCount = job.progress.sent || 0;
-    let failureCount = job.progress.failed || 0;
+    const { deviceId, type } = job;
+    
+    // Parse job.data if it's a JSON string from database
+    let data = job.data;
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data);
+        logger.info(`📝 Parsed job.data from JSON string`);
+      } catch (e) {
+        logger.error(`❌ Failed to parse job.data: ${e.message}`);
+        data = {};
+      }
+    }
+    
+    // Parse job.progress if it's a JSON string
+    let progressData = job.progress;
+    if (typeof progressData === 'string') {
+      try {
+        progressData = JSON.parse(progressData);
+      } catch (e) {
+        progressData = { sent: 0, failed: 0, total: 0 };
+      }
+    }
+    
+    let successCount = progressData.sent || 0;
+    let failureCount = progressData.failed || 0;
 
     // Get socket for device
     const socket = whatsappService.sessions.get(deviceId);
@@ -176,10 +199,44 @@ class JobQueueService {
           // Detect if simple message or bulk-unique
           let msgContent = data.message;
           
+          // Debug logging
+          logger.info(`🔍 Processing recipient: ${item.recipient}`);
+          logger.info(`📦 data.messages exists: ${!!data.messages}, isArray: ${Array.isArray(data.messages)}`);
+          if (data.messages) {
+            logger.info(`📦 data.messages count: ${data.messages.length}`);
+            logger.info(`📦 data.messages sample: ${JSON.stringify(data.messages[0])}`);
+          }
+          
           // If data.messages exists (bulk unique), find the one for this recipient
           if (data.messages && Array.isArray(data.messages)) {
-             const foundMsg = data.messages.find(m => (m.to === item.recipient || m.phone === item.recipient));
-             if (foundMsg) msgContent = foundMsg.message;
+             // Normalize both sides for robust matching
+             const { normalizePhoneNumber } = require('../utils/validation');
+             const normalizedRecipient = normalizePhoneNumber(item.recipient) || item.recipient;
+             
+             logger.info(`🔄 Normalized recipient: ${item.recipient} → ${normalizedRecipient}`);
+             
+             const foundMsg = data.messages.find(m => {
+               const msgPhone = m.to || m.phone;
+               const normalizedMsgPhone = normalizePhoneNumber(msgPhone);
+               logger.info(`🔄 Comparing: ${msgPhone} → ${normalizedMsgPhone} === ${normalizedRecipient} ? ${normalizedMsgPhone === normalizedRecipient}`);
+               return normalizedMsgPhone === normalizedRecipient;
+             });
+             
+             if (foundMsg) {
+               msgContent = foundMsg.message;
+               logger.info(`✅ Found message for ${normalizedRecipient}: ${msgContent?.substring(0, 50)}...`);
+             } else {
+               logger.error(`❌ No message found for ${normalizedRecipient}`);
+               logger.error(`📋 All messages:`, data.messages.map(m => ({
+                 original: m.to || m.phone,
+                 normalized: normalizePhoneNumber(m.to || m.phone)
+               })));
+             }
+          }
+          
+          // Validate message content exists
+          if (!msgContent || msgContent.trim() === '') {
+            throw new Error(`No message content found for recipient ${item.recipient}`);
           }
           
           const sent = await whatsappService.sendMessage(deviceId, item.recipient, msgContent);
@@ -271,17 +328,22 @@ class JobQueueService {
       }
 
       // 6. UPDATE PROGRESS
+      // Update job progress after each message
       await job.update({
         progress: {
-          total: job.progress.total,
+          total: progressData.total || 0,
           sent: successCount,
+          completed: successCount, // For frontend compatibility
           failed: failureCount
         }
       });
     }
 
-    // 7. FINALIZE JOB
-    await job.update({ status: "completed" });
+    // 7. FINAL STATUS UPDATE
+    await job.update({
+      status: "completed"
+    });
+
     logger.info(`✅ Job ${job.id} completed. Sent: ${successCount}, Failed: ${failureCount}`);
   }
 
