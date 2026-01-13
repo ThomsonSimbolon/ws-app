@@ -244,10 +244,20 @@ export default function UserJobsPage() {
                           style={{ width: `${getProgressPercentage(job)}%` }}
                         ></div>
                       </div>
-                      {job.progress.failed > 0 && (
-                        <p className="text-xs text-danger mt-0.5">
-                          {job.progress.failed} failed
-                        </p>
+                      {/* Completed/Failed Count */}
+                      {(job.progress.completed > 0 || job.progress.failed > 0) && (
+                        <div className="flex flex-col gap-0.5 mt-1 text-xs">
+                          {job.progress.completed > 0 && (
+                            <span className="text-success">
+                              {job.progress.completed} completed
+                            </span>
+                          )}
+                          {job.progress.failed > 0 && (
+                            <span className="text-danger">
+                              {job.progress.failed} failed
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
 
