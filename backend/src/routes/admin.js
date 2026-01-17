@@ -22,7 +22,7 @@ router.delete("/users/:userId", adminController.deleteUser);
 // Device Management Routes
 router.get("/devices", adminController.listDevices);
 router.get("/devices/:deviceId/health", adminController.getDeviceHealth);
-router.post("/devices/:deviceId/disconnect", adminController.disconnectDevice);
+router.delete("/devices/:deviceId/disconnect", adminController.disconnectDevice);
 router.delete("/devices/:deviceId", adminController.deleteDevice);
 
 // Message Management Routes

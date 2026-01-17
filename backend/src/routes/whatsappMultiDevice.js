@@ -176,7 +176,7 @@ router.get(
 router.get(
   "/devices/:deviceId/groups",
   authenticateToken,
-  requireAdmin, // Admin only - Group management requires admin
+  requireUser, // Admin & User can list groups for their own devices
   whatsappMultiDeviceController.listGroups
 );
 

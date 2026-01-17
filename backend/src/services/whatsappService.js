@@ -8,7 +8,7 @@ const QRCode = require("qrcode");
 const path = require("path");
 const fs = require("fs");
 const axios = require("axios");
-const { WhatsAppSession, Message, Contact } = require("../models");
+const { WhatsAppSession, Message, Contact, Group } = require("../models");
 const logger = require("../utils/logger");
 const deviceManager = require("./deviceManager");
 
@@ -149,6 +149,9 @@ class WhatsAppService {
           return undefined;
         },
       });
+
+      // Bind store to socket events
+      // this.store.bind(socket.ev);
 
       // Store session immediately
       this.sessions.set(deviceId, socket);
@@ -617,7 +620,7 @@ class WhatsAppService {
       try {
         await this.saveContactsForDevice(deviceId, contacts);
         logger.info(
-          `👥 Contacts synced for device ${deviceId}: ${contacts.length} contacts`
+          `👥 Contacts db-sync for device ${deviceId}: ${contacts.length} contacts`
         );
       } catch (error) {
         logger.error(
@@ -625,6 +628,63 @@ class WhatsAppService {
           error
         );
       }
+    });
+
+    // History sync event (CRITICAL for initial contacts load without store)
+    socket.ev.on("messaging-history.set", async ({ contacts }) => {
+      try {
+        if (contacts && contacts.length > 0) {
+          await this.saveContactsForDevice(deviceId, contacts);
+          logger.info(
+            `👥 Contacts history synced for device ${deviceId}: ${contacts.length} contacts`
+          );
+        }
+      } catch (error) {
+         logger.error(
+          `❌ Failed to save contacts from history for device ${deviceId}:`,
+          error
+        );
+      }
+    });
+
+    // Groups events
+    socket.ev.on("groups.upsert", async (groups) => {
+      try {
+        await this.saveGroupsForDevice(deviceId, groups);
+        logger.info(
+          `👥 Groups db-sync for device ${deviceId}: ${groups.length} groups`
+        );
+      } catch (error) {
+        logger.error(
+          `❌ Failed to save groups for device ${deviceId}:`,
+          error
+        );
+      }
+    });
+
+    socket.ev.on("groups.update", async (groupsUpdate) => {
+        try {
+            // For updates, we might need to fetch the full group info again or handle partial updates
+            // For simplicity, let's just trigger a full sync for the specific groups if possible, 
+            // or just log it for now.
+            // Better: just fetch these specific groups.
+            // But groupFetchAllParticipating fetches ALL.
+            // groupMetadata(id) fetches one.
+            
+            for (const update of groupsUpdate) {
+                if (update.id) {
+                     // Fetch latest metadata for this group
+                     try {
+                         const metadata = await socket.groupMetadata(update.id);
+                         await this.saveGroupsForDevice(deviceId, [metadata]);
+                     } catch (e) {
+                         // ignore
+                     }
+                }
+            }
+        } catch (error) {
+            logger.error(`❌ Failed to update groups for device ${deviceId}:`, error);
+        }
     });
 
     // Connection errors
@@ -982,6 +1042,16 @@ class WhatsAppService {
         logger.info(
           `💾 Connection status updated in database for device ${deviceId} with phone ${phoneNumber}`
         );
+
+        // Sync contacts and groups in background
+        this.syncContactsFromDevice(deviceId).catch(err => {
+          logger.error(`❌ Failed to sync contacts for device ${deviceId}:`, err);
+        });
+        
+        this.syncGroupsFromDevice(deviceId).catch(err => {
+          logger.error(`❌ Failed to sync groups for device ${deviceId}:`, err);
+        });
+
       } catch (dbError) {
         logger.error(
           `❌ Failed to update database for device ${deviceId}:`,
@@ -1453,6 +1523,126 @@ class WhatsAppService {
     }
   }
 
+
+
+  /**
+   * Save contacts to database
+   * @param {string} deviceId
+   * @param {Array} contacts
+   */
+  async saveContactsForDevice(deviceId, contacts) {
+    try {
+       const sessionState = this.sessionStates.get(deviceId);
+       if (!sessionState || !sessionState.userId) return;
+       const userId = sessionState.userId;
+
+       const upsertPromises = [];
+       
+       for (const contact of contacts) {
+        const jid = contact.id;
+        if (!jid) continue;
+        if (jid === "status@broadcast") continue;
+        if (jid.includes("@g.us")) continue; 
+        
+        const phoneNumber = jid.split("@")[0];
+        const name = contact.name || contact.notify || contact.verifiedName || phoneNumber;
+        
+        upsertPromises.push(
+          Contact.findOrCreate({
+            where: { userId, phoneNumber },
+            defaults: {
+              name: name,
+              isBlocked: false,
+              tags: ["whatsapp-sync"],
+            }
+          }).then(([dbContact, created]) => {
+            if (!created) {
+               // Only update if we have a better name and the current name is just the number
+               if (dbContact.name === dbContact.phoneNumber && name !== phoneNumber) {
+                return dbContact.update({ name });
+              }
+              // Force update if provided name is different? 
+              // Maybe best to trust WhatsApp's name if available?
+              // Let's stick to safe update
+            }
+          }).catch(err => {})
+        );
+       }
+       await Promise.all(upsertPromises);
+    } catch (error) {
+        throw error;
+    }
+  }
+
+  /**
+   * Save groups to database
+   * @param {string} deviceId
+   * @param {Array} groups
+   */
+  async saveGroupsForDevice(deviceId, groups) {
+      const upsertPromises = [];
+      
+      for (const groupData of groups) {
+        upsertPromises.push(
+          Group.upsert({
+            groupId: groupData.id,
+            deviceId: deviceId,
+            subject: groupData.subject,
+            description: groupData.desc || groupData.description, // handle both formats
+            creationTimestamp: groupData.creation || groupData.creationTimestamp,
+            owner: groupData.owner,
+            participants: groupData.participants ? groupData.participants.map(p => p.id || p) : [], // handle both object/string
+            admins: groupData.participants ? groupData.participants.filter(p => p.admin).map(p => p.id || p) : [],
+            isActive: true, 
+            metadata: {
+              restrict: groupData.restrict,
+              announce: groupData.announce,
+              size: groupData.size,
+            }
+          }).catch(err => {
+             // logger.warn
+          })
+        );
+      }
+      
+      await Promise.all(upsertPromises);
+  }
+
+  /**
+   * Sync all contacts from store to database
+   * @param {string} deviceId
+   */
+  async syncContactsFromDevice(deviceId) {
+    // Store is not available in this version of Baileys
+    // We rely on contacts.upsert event which calls saveContactsForDevice
+    logger.info(`ℹ️ Sync contacts via store requested for ${deviceId} but store is disabled.`);
+  }
+
+  /**
+   * Sync groups from device to database
+   * @param {string} deviceId
+   */
+  async syncGroupsFromDevice(deviceId) {
+    try {
+      const socket = this.sessions.get(deviceId);
+      const sessionState = this.sessionStates.get(deviceId);
+      if (!socket || !sessionState) return;
+
+      logger.info(`🔄 Fetching participating groups for device ${deviceId}...`);
+      
+      // Fetch all groups the bot is part of
+      const groups = await socket.groupFetchAllParticipating();
+      const groupList = Object.values(groups);
+      
+      logger.info(`🔄 Syncing ${groupList.length} groups for device ${deviceId}...`);
+      
+      await this.saveGroupsForDevice(deviceId, groupList);
+      logger.info(`✅ Groups synced for device ${deviceId}`);
+    } catch (error) {
+      logger.error(`❌ Error syncing groups for device ${deviceId}:`, error);
+    }
+  }
+
   /**
    * Download media from URL
    * @param {string} url - Media URL
@@ -1480,44 +1670,39 @@ class WhatsAppService {
    */
   async getContactsForDevice(deviceId) {
     try {
-      const socket = this.sessions.get(deviceId);
-      if (!socket) {
-        throw new Error("WhatsApp session not found for device");
-      }
-
+      // Check session to identify user, but allow fetching even if disconnected if we know the user?
+      // Actually controller calls this with deviceId.
       const sessionState = this.sessionStates.get(deviceId);
-      if (sessionState?.status !== "connected") {
-        throw new Error("WhatsApp not connected");
+      let userId = sessionState?.userId;
+
+      if (!userId) {
+         // Fallback: try to find userId from deviceManager if not in memory
+         const device = await deviceManager.getDevice(deviceId);
+         if (device) userId = device.userId;
       }
 
-      // Get contacts from Baileys store
-      // Baileys stores contacts in socket.store.contacts as a Map-like structure
-      const contactsMap = socket.store?.contacts || {};
-
-      // Convert to array format
-      // Baileys contacts structure: { [jid]: { id, notify, name, verifiedName, ... } }
-      const contactsArray = [];
-
-      for (const jid in contactsMap) {
-        const contact = contactsMap[jid];
-        if (contact && jid && !jid.includes("@g.us")) {
-          // Exclude groups
-          contactsArray.push({
-            id: jid,
-            name: contact.name || contact.notify || null,
-            notify: contact.notify || null,
-            verifiedName: contact.verifiedName || null,
-          });
-        }
+      if (!userId) {
+        logger.warn(`getContactsForDevice: No user found for device ${deviceId}`);
+        return [];
       }
 
-      logger.info(
-        `✅ Retrieved ${contactsArray.length} contacts for device ${deviceId}`
-      );
+      // Fetch from Database
+      const dbContacts = await Contact.findAll({
+        where: { userId: userId },
+        order: [['name', 'ASC']]
+      });
 
-      return contactsArray;
+      // Map to Baileys-like format for frontend compatibility
+      return dbContacts.map(c => ({
+        id: c.phoneNumber + "@s.whatsapp.net",
+        name: c.name,
+        notify: c.name,
+        verifiedName: c.name,
+        imgUrl: null // TODO: Add profile pic support later
+      }));
+
     } catch (error) {
-      logger.error(`Error getting contacts for device ${deviceId}:`, error);
+      logger.error(`Error getContactsForDevice ${deviceId}:`, error);
       throw error;
     }
   }

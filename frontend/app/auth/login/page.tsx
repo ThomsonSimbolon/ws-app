@@ -26,10 +26,8 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-    if (isAuthenticated) {
-      // Force hard redirect to ensure cookies are sent to middleware
-      window.location.href = '/dashboard';
-    }
+      // Use Next.js router for smooth navigation after login
+      router.push('/dashboard');
     }
   }, [isAuthenticated, router]);
 
