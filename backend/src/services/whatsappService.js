@@ -1549,11 +1549,12 @@ class WhatsAppService {
         
         upsertPromises.push(
           Contact.findOrCreate({
-            where: { userId, phoneNumber },
+            where: { userId, deviceId, phoneNumber }, // Check per device
             defaults: {
               name: name,
               isBlocked: false,
               tags: ["whatsapp-sync"],
+              deviceId: deviceId, // Ensure deviceId is saved
             }
           }).then(([dbContact, created]) => {
             if (!created) {
@@ -1561,9 +1562,6 @@ class WhatsAppService {
                if (dbContact.name === dbContact.phoneNumber && name !== phoneNumber) {
                 return dbContact.update({ name });
               }
-              // Force update if provided name is different? 
-              // Maybe best to trust WhatsApp's name if available?
-              // Let's stick to safe update
             }
           }).catch(err => {})
         );
@@ -1686,9 +1684,12 @@ class WhatsAppService {
         return [];
       }
 
-      // Fetch from Database
+      // Fetch from Database with deviceId filter
       const dbContacts = await Contact.findAll({
-        where: { userId: userId },
+        where: { 
+          userId: userId,
+          deviceId: deviceId 
+        },
         order: [['name', 'ASC']]
       });
 

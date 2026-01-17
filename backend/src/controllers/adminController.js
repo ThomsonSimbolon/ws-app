@@ -899,6 +899,10 @@ const listContacts = async (req, res) => {
       whereClause.userId = parseInt(userId);
     }
 
+    if (req.query.deviceId) {
+      whereClause.deviceId = req.query.deviceId;
+    }
+
     if (isBlocked !== undefined) {
       whereClause.isBlocked = isBlocked === "true";
     }
@@ -917,6 +921,7 @@ const listContacts = async (req, res) => {
       attributes: [
         "id",
         "userId",
+        "deviceId",
         "phoneNumber",
         "name",
         "email",

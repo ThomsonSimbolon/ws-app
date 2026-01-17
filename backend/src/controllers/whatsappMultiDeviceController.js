@@ -1695,6 +1695,7 @@ const listGroups = async (req, res) => {
       id: group.groupId,
       subject: group.subject,
       participants: group.participants || [],
+      description: group.description || null,
       creation: group.createdAt ? Math.floor(new Date(group.createdAt).getTime() / 1000) : null,
       owner: null, // TODO: Get owner from metadata if available
     }));
